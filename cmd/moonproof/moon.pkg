@@ -1,9 +1,12 @@
 ///|
-/// MoonProof 可执行入口
-///
-/// 这是参考消费者，不是库本身：它把 features/* 组装成 CLI。
-/// supported_targets = "native" 从这里的依赖图继承（→ features → exec）。
+/// cmd/moonproof — CLI 入口（native executable）
 pkgtype(kind: "executable")
+
 supported_targets = "native"
 
-import {}
+import {
+  "Duckweed/moon-proof/features/run" @run,
+  "Duckweed/moon-proof/features/report" @report,
+  "Duckweed/moon-proof/platform/proc" @proc,
+  "moonbitlang/core/env" @env,
+}

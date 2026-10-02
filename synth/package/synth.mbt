@@ -39,10 +39,11 @@ pub fn synth_block(block : @markdown.CodeBlock, index : Int, doc_path : String) 
   let name = "moonproof_block_" + pad(index, 4)
   let is_run = block.kind.name() == "run"
   let moon_mod = "name = \"Duckweed/\{name}\"\nversion = \"0.1.0\"\ndescription = \"MoonProof synthesized block\"\n"
+  // 可运行块用 pkgtype(kind:"executable") 标记 main 入口（本工具链版本不用 is_main）。
   let moon_pkg = if is_run {
-    "is_main = true\n"
+    "pkgtype(kind: \"executable\")\n"
   } else {
-    "is_main = false\n"
+    ""
   }
   let main_mbt = block.code
   let files = [
@@ -84,8 +85,10 @@ test "合成包包含 moon.mod / main.moon.pkg / main.mbt，内容为代码块" 
   // main.mbt 内容即代码块
   assert_eq(r.files[2].path, "main/main.mbt")
   assert_eq(r.files[2].content, "let x = 1")
-  // moon.pkg 为普通包
-  assert_eq(r.files[1].content, "is_main = false\n")
+  // moon.pkg 为普通库包（空内容）
+  assert_eq(r.files[1].content, "")
+  // moon.mod 无需外部 deps（core 自动可用）
+  assert_true(!r.files[0].content.contains("deps"))
 }
 
 test "行号映射：code 第 k 行映射到 start_line + k" {
@@ -97,11 +100,11 @@ test "行号映射：code 第 k 行映射到 start_line + k" {
   assert_eq(r.line_map[2], 13)
 }
 
-test "Run 标注 → is_main 可运行包" {
+test "Run 标注 → 可执行包（pkgtype executable）" {
   let block = @markdown.make_block(1, 5, "fn main() { println(\"hi\") }", @markdown.run_kind())
   let r = synth_block(block, 2, "c.md")
   assert_eq(r.is_run, true)
-  assert_eq(r.files[1].content, "is_main = true\n")
+  assert_eq(r.files[1].content, "pkgtype(kind: \"executable\")\n")
 }
 
 test "模块名带序号补零且唯一" {
