@@ -38,9 +38,12 @@ pub struct SynthResult {
 pub fn synth_block(block : @markdown.CodeBlock, index : Int, doc_path : String) -> SynthResult {
   let name = "moonproof_block_" + pad(index, 4)
   let is_run = block.kind.name() == "run"
+  // 含顶层 fn main 的块也须用可执行包：`fn main` 在库包（moon.pkg 空）中不合法，
+  // 否则会导致对本身正确的代码块误报 compile-error。
+  let has_main = block.code.contains("fn main")
   let moon_mod = "name = \"Duckweed/\{name}\"\nversion = \"0.1.0\"\ndescription = \"MoonProof synthesized block\"\n"
-  // 可运行块用 pkgtype(kind:"executable") 标记 main 入口（本工具链版本不用 is_main）。
-  let moon_pkg = if is_run {
+  // 可运行块或含 fn main 的块用 pkgtype(kind:"executable") 标记 main 入口（本工具链版本不用 is_main）。
+  let moon_pkg = if is_run || has_main {
     "pkgtype(kind: \"executable\")\n"
   } else {
     ""
