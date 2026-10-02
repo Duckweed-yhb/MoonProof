@@ -1,7 +1,14 @@
 ///|
 /// exec/toolchain — 调起 moon check / moon test
 ///
-/// 执行层：子进程执行 + 输出捕获 + 超时控制。含 C FFI，仅 native。
+/// 执行层：在合成模块目录里调用真实 moon 工具链，捕获输出，带超时。
+/// 复用 platform/proc 的子进程执行（来自 MoonHive）。
+///
+/// 非零退出码不算错误：编译器报错就是非零退出码，是正常结果。
+/// 因此返回 Ok(ToolOutput) 而非按退出码失败；退出码由调用方（run 编排）
+/// 结合标注决定成败。
 supported_targets = "native"
 
-import {}
+import {
+  "Duckweed/moon-proof/platform/proc" @proc,
+}
