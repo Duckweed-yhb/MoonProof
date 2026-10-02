@@ -12,6 +12,9 @@
  *      避免引用计数泄漏（v1 初稿的缺陷，此处已修正）。
  *   3. 不跟随符号链接（避免删除时逃出工作区）。
  *   4. 字符串转换只在 FFI 边界发生。
+ *   5. Windows 上统一用宽字符（wchar_t/UTF-16）路径 API，
+ *      支持含中文等非 ASCII 字符的路径（如 E:\...\03-竞赛\...）。
+ *      MoonBit 的 String 内存即 UTF-16（uint16_t[]），可逐单元拷贝。
  * ============================================================ */
 
 #include "moonbit.h"
@@ -25,13 +28,11 @@
 #include <windows.h>
 #include <direct.h>
 #include <wchar.h>
-#define MKDIR(p) _mkdir(p)
-#define RMDIR(p) _rmdir(p)
+#define MKDIR_W(p) _wmkdir(p)
+#define RMDIR_W(p) _wrmdir(p)
 #else
 #include <dirent.h>
 #include <unistd.h>
-#define MKDIR(p) mkdir((p), 0777)
-#define RMDIR(p) rmdir(p)
 #endif
 
 /* 路径类型 */
@@ -44,6 +45,7 @@
 
 /* ---------- 边界转换 ---------- */
 
+/* 非 Windows：UTF-16 → ASCII（仅用于纯 ASCII 路径；Windows 用宽版，见下） */
 static void fs_str_to_ascii(moonbit_string_t src, char *dst, int32_t cap) {
   if (cap <= 0) {
     return;
@@ -74,16 +76,94 @@ static moonbit_string_t fs_ascii_to_str(const char *src, int32_t len) {
   return out;
 }
 
-/* ---------- 纯 C 工具 ---------- */
+/* Windows：MoonBit String（UTF-16 uint16_t[]）→ wchar_t*（调用方 free）。
+   Windows 的 wchar_t 为 UTF-16，与 MoonBit String 编码一致，逐单元拷贝即可。 */
+#ifdef _WIN32
+static wchar_t *fs_str_to_wide(moonbit_string_t src) {
+  int32_t n = (src == NULL) ? 0 : Moonbit_array_length(src);
+  wchar_t *w = (wchar_t *)malloc(((size_t)n + 1) * sizeof(wchar_t));
+  if (w == NULL) {
+    return NULL;
+  }
+  for (int32_t i = 0; i < n; i++) {
+    w[i] = (wchar_t)src[i];
+  }
+  w[n] = 0;
+  return w;
+}
 
+/* 宽字符串转回 MoonBit 字符串（用于返回文件路径列表）。 */
+static moonbit_string_t fs_wide_to_str(const wchar_t *src) {
+  int32_t n = (int32_t)wcslen(src);
+  moonbit_string_t out = moonbit_make_string(n, 0);
+  for (int32_t i = 0; i < n; i++) {
+    out[i] = (uint16_t)src[i];
+  }
+  return out;
+}
+
+static int32_t fs_kind_w(const wchar_t *p) {
+  struct _stat64i32 st;
+  if (_wstat(p, &st) != 0) {
+    return FS_NONE;
+  }
+  if (st.st_mode & _S_IFDIR) {
+    return FS_DIR;
+  }
+  if (st.st_mode & _S_IFREG) {
+    return FS_FILE;
+  }
+  return FS_OTHER;
+}
+
+static void fs_strip_w(wchar_t *p) {
+  size_t n = wcslen(p);
+  while (n > 1 && (p[n - 1] == L'/' || p[n - 1] == L'\\')) {
+    if (n == 3 && p[1] == L':') {
+      break;
+    }
+    p[n - 1] = 0;
+    n--;
+  }
+}
+
+static void fs_join_w(wchar_t *dst, int32_t cap, const wchar_t *dir, const wchar_t *name) {
+  swprintf(dst, (size_t)cap, L"%ls\\%ls", dir, name);
+}
+
+static int32_t fs_mkdir_all_w(wchar_t *p) {
+  if (p[0] == 0) {
+    return -1;
+  }
+  fs_strip_w(p);
+  for (size_t i = 1; p[i] != 0; i++) {
+    if (p[i] == L'/' || p[i] == L'\\') {
+      if (i == 2 && p[1] == L':') {
+        continue;
+      }
+      wchar_t saved = p[i];
+      p[i] = 0;
+      if (p[0] != 0) {
+        MKDIR_W(p);
+      }
+      p[i] = saved;
+    }
+  }
+  if (MKDIR_W(p) != 0) {
+    if (fs_kind_w(p) != FS_DIR) {
+      return -1;
+    }
+  }
+  return 0;
+}
+#endif
+
+/* ---------- 纯 C 工具（非 Windows / 通用） ---------- */
+
+#ifndef _WIN32
 static void fs_strip_trailing_sep(char *p) {
   int32_t n = (int32_t)strlen(p);
   while (n > 1 && (p[n - 1] == '/' || p[n - 1] == '\\')) {
-#ifdef _WIN32
-    if (n == 3 && p[1] == ':') {
-      break;
-    }
-#endif
     p[n - 1] = 0;
     n--;
   }
@@ -94,44 +174,62 @@ static int32_t fs_kind_c(const char *p) {
   if (stat(p, &st) != 0) {
     return FS_NONE;
   }
-#ifdef _WIN32
-  if (st.st_mode & _S_IFDIR) {
-    return FS_DIR;
-  }
-  if (st.st_mode & _S_IFREG) {
-    return FS_FILE;
-  }
-#else
   if (S_ISDIR(st.st_mode)) {
     return FS_DIR;
   }
   if (S_ISREG(st.st_mode)) {
     return FS_FILE;
   }
-#endif
   return FS_OTHER;
 }
 
-/* 去掉路径末尾分隔符后拼接子项，统一用平台分隔符 */
-#ifdef _WIN32
-#define FS_SEP "\\"
-#else
-#define FS_SEP "/"
-#endif
-
 static void fs_join(char *dst, int32_t cap, const char *dir, const char *name) {
-  snprintf(dst, (size_t)cap, "%s" FS_SEP "%s", dir, name);
+  snprintf(dst, (size_t)cap, "%s/%s", dir, name);
 }
+
+static int32_t mkdir_all_c(char *p) {
+  if (p[0] == 0) {
+    return -1;
+  }
+  fs_strip_trailing_sep(p);
+  for (int32_t i = 1; p[i] != 0; i++) {
+    if (p[i] == '/') {
+      char saved = p[i];
+      p[i] = 0;
+      if (p[0] != 0) {
+        mkdir(p, 0777);
+      }
+      p[i] = saved;
+    }
+  }
+  if (mkdir(p, 0777) != 0) {
+    if (fs_kind_c(p) != FS_DIR) {
+      return -1;
+    }
+  }
+  return 0;
+}
+#endif
 
 /* ---------- 路径查询 ---------- */
 
 int32_t fs_path_kind(moonbit_string_t path) {
+#ifdef _WIN32
+  wchar_t *w = fs_str_to_wide(path);
+  if (w == NULL) {
+    return FS_NONE;
+  }
+  int32_t k = (w[0] == 0) ? FS_NONE : fs_kind_w(w);
+  free(w);
+  return k;
+#else
   char p[FS_MAX_PATH];
   fs_str_to_ascii(path, p, (int32_t)sizeof(p));
   if (p[0] == 0) {
     return FS_NONE;
   }
   return fs_kind_c(p);
+#endif
 }
 
 int32_t fs_is_dir(moonbit_string_t path) {
@@ -148,6 +246,19 @@ int32_t fs_exists(moonbit_string_t path) {
 
 /* 文件字节大小；目录或不存在返回 -1 */
 int64_t fs_file_size(moonbit_string_t path) {
+#ifdef _WIN32
+  wchar_t *w = fs_str_to_wide(path);
+  if (w == NULL) {
+    return -1;
+  }
+  struct _stat64i32 st;
+  if (_wstat(w, &st) != 0 || fs_kind_w(w) != FS_FILE) {
+    free(w);
+    return -1;
+  }
+  free(w);
+  return (int64_t)st.st_size;
+#else
   char p[FS_MAX_PATH];
   fs_str_to_ascii(path, p, (int32_t)sizeof(p));
   struct stat st;
@@ -158,113 +269,91 @@ int64_t fs_file_size(moonbit_string_t path) {
     return -1;
   }
   return (int64_t)st.st_size;
+#endif
 }
 
 /* ---------- 目录创建 ---------- */
 
-/* 递归创建目录的内部实现（供多处复用） */
-static int32_t mkdir_all_c(char *p) {
-  if (p[0] == 0) {
+int32_t fs_mkdir_all(moonbit_string_t path) {
+#ifdef _WIN32
+  wchar_t *w = fs_str_to_wide(path);
+  if (w == NULL) {
     return -1;
   }
-  fs_strip_trailing_sep(p);
-
-  for (int32_t i = 1; p[i] != 0; i++) {
-    if (p[i] == '/' || p[i] == '\\') {
-#ifdef _WIN32
-      if (i == 2 && p[1] == ':') {
-        continue;
-      }
-#endif
-      char saved = p[i];
-      p[i] = 0;
-      if (p[0] != 0) {
-        MKDIR(p);
-      }
-      p[i] = saved;
-    }
-  }
-  if (MKDIR(p) != 0) {
-    if (fs_kind_c(p) != FS_DIR) {
-      return -1;
-    }
-  }
-  return 0;
-}
-
-int32_t fs_mkdir_all(moonbit_string_t path) {
+  int32_t r = fs_mkdir_all_w(w);
+  free(w);
+  return r;
+#else
   char p[FS_MAX_PATH];
   fs_str_to_ascii(path, p, (int32_t)sizeof(p));
   return mkdir_all_c(p);
-}
-
-/* ---------- 递归删除（内部用纯 C 字符串） ---------- */
-
-static int32_t fs_rm_rf_c(const char *p) {
-  int32_t kind = fs_kind_c(p);
-  if (kind == FS_NONE) {
-    return 0; /* 不存在视为已删除 */
-  }
-  if (kind != FS_DIR) {
-    return (remove(p) == 0) ? 0 : -1;
-  }
-
-#ifdef _WIN32
-  char pattern[FS_MAX_PATH + 8];
-  snprintf(pattern, sizeof(pattern), "%s\\*", p);
-  WIN32_FIND_DATAA fd;
-  HANDLE h = FindFirstFileA(pattern, &fd);
-  if (h != INVALID_HANDLE_VALUE) {
-    do {
-      if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) {
-        continue;
-      }
-      char child[FS_MAX_PATH + 8];
-      fs_join(child, (int32_t)sizeof(child), p, fd.cFileName);
-      fs_rm_rf_c(child);
-    } while (FindNextFileA(h, &fd));
-    FindClose(h);
-  }
-  return (RMDIR(p) == 0) ? 0 : -1;
-#else
-  DIR *d = opendir(p);
-  if (d != NULL) {
-    struct dirent *e;
-    while ((e = readdir(d)) != NULL) {
-      if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) {
-        continue;
-      }
-      char child[FS_MAX_PATH + 8];
-      fs_join(child, (int32_t)sizeof(child), p, e->d_name);
-      fs_rm_rf_c(child);
-    }
-    closedir(d);
-  }
-  return (RMDIR(p) == 0) ? 0 : -1;
 #endif
 }
 
+/* ---------- 递归删除 ---------- */
+
+#ifdef _WIN32
+static int32_t fs_rm_rf_w(const wchar_t *p) {
+  int32_t kind = fs_kind_w(p);
+  if (kind == FS_NONE) {
+    return 0;
+  }
+  if (kind != FS_DIR) {
+    return (_wremove(p) == 0) ? 0 : -1;
+  }
+  wchar_t pattern[FS_MAX_PATH + 8];
+  swprintf(pattern, sizeof(pattern) / sizeof(wchar_t), L"%ls\\*", p);
+  WIN32_FIND_DATAW fd;
+  HANDLE h = FindFirstFileW(pattern, &fd);
+  if (h != INVALID_HANDLE_VALUE) {
+    do {
+      if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) {
+        continue;
+      }
+      wchar_t child[FS_MAX_PATH + 8];
+      fs_join_w(child, (int32_t)(sizeof(child) / sizeof(wchar_t)), p, fd.cFileName);
+      fs_rm_rf_w(child);
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+  }
+  return (RMDIR_W(p) == 0) ? 0 : -1;
+}
+#endif
+
 /* 递归删除目录。为防误删，拒绝过短路径与驱动器根。 */
 int32_t fs_rm_rf(moonbit_string_t path) {
+#ifdef _WIN32
+  wchar_t *w = fs_str_to_wide(path);
+  if (w == NULL) {
+    return -2;
+  }
+  fs_strip_w(w);
+  int32_t len = (int32_t)wcslen(w);
+  int32_t r;
+  if (len < 4) {
+    r = -2;
+  } else if (len == 2 && w[1] == L':') {
+    r = -2;
+  } else {
+    r = fs_rm_rf_w(w);
+  }
+  free(w);
+  return r;
+#else
   char p[FS_MAX_PATH];
   fs_str_to_ascii(path, p, (int32_t)sizeof(p));
   fs_strip_trailing_sep(p);
-
   int32_t len = (int32_t)strlen(p);
   if (len < 4) {
     return -2;
   }
-#ifdef _WIN32
-  if (len == 2 && p[1] == ':') {
-    return -2;
-  }
-#endif
   return fs_rm_rf_c(p);
+#endif
 }
 
 /* ---------- 文件读写 ---------- */
 
-/* 把 UTF-8 字节解码为 UTF-16 并构造 MoonBit 字符串。
+/* 把 UTF-8 字节解码为 MoonBit 字符串（UTF-16）。
    MoonBit 的 String 是 UTF-16，逐字节转换会让多字节字符变乱码。 */
 static moonbit_string_t utf8_bytes_to_mbt_str(const char *src, int32_t len) {
   if (len < 0) {
@@ -339,9 +428,18 @@ static moonbit_string_t utf8_bytes_to_mbt_str(const char *src, int32_t len) {
 
 /* 读取文本文件（按 UTF-8 解码）。不存在或不可读返回空串。 */
 moonbit_string_t fs_read_text(moonbit_string_t path) {
+#ifdef _WIN32
+  wchar_t *w = fs_str_to_wide(path);
+  if (w == NULL) {
+    return moonbit_make_string(0, 0);
+  }
+  FILE *f = _wfopen(w, L"rb");
+  free(w);
+#else
   char p[FS_MAX_PATH];
   fs_str_to_ascii(path, p, (int32_t)sizeof(p));
   FILE *f = fopen(p, "rb");
+#endif
   if (f == NULL) {
     return moonbit_make_string(0, 0);
   }
@@ -372,9 +470,8 @@ moonbit_string_t fs_read_text(moonbit_string_t path) {
 /* 把 MoonBit 字符串按 UTF-8 编码写入文件（覆盖写）。成功返回 0。 */
 int32_t fs_write_text(moonbit_string_t path, moonbit_string_t content) {
 #ifdef _WIN32
-  /* Windows：仓库可能位于含中文的路径。A 版
-     fopen 的路径经 fs_str_to_ascii 转换后，中文被替换成 '?'，写文件必然失败。
-     MoonBit String 的内存是 UTF-16（uint16_t 数组），Windows wchar_t 同为
+  /* Windows：仓库可能位于含中文的路径。A 版 fopen 会破坏非 ASCII 路径，
+     MoonBit String 内存是 UTF-16（uint16_t 数组），Windows wchar_t 同为
      UTF-16——直接逐单元拷贝即可，无需编码转换。 */
   int32_t pn = (int32_t)Moonbit_array_length(path);
   wchar_t *wp = (wchar_t *)malloc(((size_t)pn + 1) * sizeof(wchar_t));
@@ -435,26 +532,53 @@ int32_t fs_write_text(moonbit_string_t path, moonbit_string_t content) {
 
 /* 删除文件；成功返回 0，失败返回 -1。 */
 int32_t fs_remove(moonbit_string_t path) {
+#ifdef _WIN32
+  wchar_t *w = fs_str_to_wide(path);
+  if (w == NULL) {
+    return -1;
+  }
+  int32_t r = (w[0] == 0) ? -1 : ((_wremove(w) == 0) ? 0 : -1);
+  free(w);
+  return r;
+#else
   char p[FS_MAX_PATH];
   fs_str_to_ascii(path, p, (int32_t)sizeof(p));
   if (p[0] == 0) {
     return -1;
   }
   return (remove(p) == 0) ? 0 : -1;
+#endif
 }
 
 /* 复制单个文件；成功返回 0 */
 int32_t fs_copy_file(moonbit_string_t src, moonbit_string_t dst) {
+#ifdef _WIN32
+  wchar_t *ws = fs_str_to_wide(src);
+  wchar_t *wd = fs_str_to_wide(dst);
+  if (ws == NULL || wd == NULL) {
+    free(ws);
+    free(wd);
+    return -1;
+  }
+  FILE *in = _wfopen(ws, L"rb");
+  free(ws);
+  if (in == NULL) {
+    free(wd);
+    return -1;
+  }
+  FILE *out = _wfopen(wd, L"wb");
+  free(wd);
+#else
   char sp[FS_MAX_PATH];
   char dp[FS_MAX_PATH];
   fs_str_to_ascii(src, sp, (int32_t)sizeof(sp));
   fs_str_to_ascii(dst, dp, (int32_t)sizeof(dp));
-
   FILE *in = fopen(sp, "rb");
   if (in == NULL) {
     return -1;
   }
   FILE *out = fopen(dp, "wb");
+#endif
   if (out == NULL) {
     fclose(in);
     return -2;
@@ -474,47 +598,42 @@ int32_t fs_copy_file(moonbit_string_t src, moonbit_string_t dst) {
 }
 
 /* 递归复制目录。跳过 .git / _build / target 等与验证无关且体积大的目录。 */
-static int32_t fs_copy_tree_c(const char *src, const char *dst) {
-  if (fs_kind_c(src) != FS_DIR) {
+#ifdef _WIN32
+static int32_t fs_copy_tree_w(const wchar_t *src, const wchar_t *dst) {
+  if (fs_kind_w(src) != FS_DIR) {
     return -1;
   }
-  if (mkdir_all_c(dst) != 0) {
+  wchar_t dst2[FS_MAX_PATH];
+  wcscpy(dst2, dst);
+  if (fs_mkdir_all_w(dst2) != 0) {
     return -2;
   }
-
-#ifdef _WIN32
-  char pattern[FS_MAX_PATH + 8];
-  snprintf(pattern, sizeof(pattern), "%s\\*", src);
-  WIN32_FIND_DATAA fd;
-  HANDLE h = FindFirstFileA(pattern, &fd);
+  wchar_t pattern[FS_MAX_PATH + 8];
+  swprintf(pattern, sizeof(pattern) / sizeof(wchar_t), L"%ls\\*", src);
+  WIN32_FIND_DATAW fd;
+  HANDLE h = FindFirstFileW(pattern, &fd);
   if (h == INVALID_HANDLE_VALUE) {
     return 0;
   }
   do {
-    if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) {
+    if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) {
       continue;
     }
-    /* 跳过与验证无关的目录，避免无谓的磁盘占用与耗时 */
-    if (strcmp(fd.cFileName, ".git") == 0 || strcmp(fd.cFileName, "_build") == 0 ||
-        strcmp(fd.cFileName, "target") == 0 || strcmp(fd.cFileName, "node_modules") == 0) {
+    if (wcscmp(fd.cFileName, L".git") == 0 || wcscmp(fd.cFileName, L"_build") == 0 ||
+        wcscmp(fd.cFileName, L"target") == 0 || wcscmp(fd.cFileName, L"node_modules") == 0) {
       continue;
     }
-    char cs[FS_MAX_PATH + 8];
-    char cd[FS_MAX_PATH + 8];
-    fs_join(cs, (int32_t)sizeof(cs), src, fd.cFileName);
-    fs_join(cd, (int32_t)sizeof(cd), dst, fd.cFileName);
+    wchar_t cs[FS_MAX_PATH + 8];
+    wchar_t cd[FS_MAX_PATH + 8];
+    int32_t cap = (int32_t)(sizeof(cs) / sizeof(wchar_t));
+    fs_join_w(cs, cap, src, fd.cFileName);
+    fs_join_w(cd, cap, dst, fd.cFileName);
     if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-      fs_copy_tree_c(cs, cd);
+      fs_copy_tree_w(cs, cd);
     } else {
-      char sp2[FS_MAX_PATH];
-      char dp2[FS_MAX_PATH];
-      strncpy(sp2, cs, sizeof(sp2) - 1);
-      sp2[sizeof(sp2) - 1] = 0;
-      strncpy(dp2, cd, sizeof(dp2) - 1);
-      dp2[sizeof(dp2) - 1] = 0;
-      FILE *in = fopen(sp2, "rb");
+      FILE *in = _wfopen(cs, L"rb");
       if (in != NULL) {
-        FILE *out = fopen(dp2, "wb");
+        FILE *out = _wfopen(cd, L"wb");
         if (out != NULL) {
           char buf[65536];
           size_t n;
@@ -526,9 +645,21 @@ static int32_t fs_copy_tree_c(const char *src, const char *dst) {
         fclose(in);
       }
     }
-  } while (FindNextFileA(h, &fd));
+  } while (FindNextFileW(h, &fd));
   FindClose(h);
+  return 0;
+}
 #else
+static int32_t fs_copy_tree_c(const char *src, const char *dst) {
+  if (fs_kind_c(src) != FS_DIR) {
+    return -1;
+  }
+  char dst2[FS_MAX_PATH];
+  strncpy(dst2, dst, sizeof(dst2) - 1);
+  dst2[sizeof(dst2) - 1] = 0;
+  if (mkdir_all_c(dst2) != 0) {
+    return -2;
+  }
   DIR *d = opendir(src);
   if (d == NULL) {
     return 0;
@@ -565,11 +696,24 @@ static int32_t fs_copy_tree_c(const char *src, const char *dst) {
     }
   }
   closedir(d);
-#endif
   return 0;
 }
+#endif
 
 int32_t fs_copy_tree(moonbit_string_t src, moonbit_string_t dst) {
+#ifdef _WIN32
+  wchar_t *ws = fs_str_to_wide(src);
+  wchar_t *wd = fs_str_to_wide(dst);
+  if (ws == NULL || wd == NULL || ws[0] == 0 || wd[0] == 0) {
+    free(ws);
+    free(wd);
+    return -1;
+  }
+  int32_t r = fs_copy_tree_w(ws, wd);
+  free(ws);
+  free(wd);
+  return r;
+#else
   char sp[FS_MAX_PATH];
   char dp[FS_MAX_PATH];
   fs_str_to_ascii(src, sp, (int32_t)sizeof(sp));
@@ -578,41 +722,48 @@ int32_t fs_copy_tree(moonbit_string_t src, moonbit_string_t dst) {
     return -1;
   }
   return fs_copy_tree_c(sp, dp);
+#endif
 }
 
 /* ---------- 遍历与统计 ---------- */
 
+#ifdef _WIN32
+static int64_t fs_dir_bytes_w(const wchar_t *p, int32_t depth, int32_t max_depth) {
+  if (depth > max_depth) {
+    return 0;
+  }
+  int64_t total = 0;
+  wchar_t pattern[FS_MAX_PATH + 8];
+  swprintf(pattern, sizeof(pattern) / sizeof(wchar_t), L"%ls\\*", p);
+  WIN32_FIND_DATAW fd;
+  HANDLE h = FindFirstFileW(pattern, &fd);
+  if (h == INVALID_HANDLE_VALUE) {
+    return 0;
+  }
+  do {
+    if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) {
+      continue;
+    }
+    wchar_t child[FS_MAX_PATH + 8];
+    fs_join_w(child, (int32_t)(sizeof(child) / sizeof(wchar_t)), p, fd.cFileName);
+    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+      total += fs_dir_bytes_w(child, depth + 1, max_depth);
+    } else {
+      struct _stat64i32 st;
+      if (_wstat(child, &st) == 0) {
+        total += (int64_t)st.st_size;
+      }
+    }
+  } while (FindNextFileW(h, &fd));
+  FindClose(h);
+  return total;
+}
+#else
 static int64_t fs_dir_bytes_c(const char *p, int32_t depth, int32_t max_depth) {
   if (depth > max_depth) {
     return 0;
   }
   int64_t total = 0;
-
-#ifdef _WIN32
-  char pattern[FS_MAX_PATH + 8];
-  snprintf(pattern, sizeof(pattern), "%s\\*", p);
-  WIN32_FIND_DATAA fd;
-  HANDLE h = FindFirstFileA(pattern, &fd);
-  if (h == INVALID_HANDLE_VALUE) {
-    return 0;
-  }
-  do {
-    if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) {
-      continue;
-    }
-    char child[FS_MAX_PATH + 8];
-    fs_join(child, (int32_t)sizeof(child), p, fd.cFileName);
-    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-      total += fs_dir_bytes_c(child, depth + 1, max_depth);
-    } else {
-      struct stat st;
-      if (stat(child, &st) == 0) {
-        total += (int64_t)st.st_size;
-      }
-    }
-  } while (FindNextFileA(h, &fd));
-  FindClose(h);
-#else
   DIR *d = opendir(p);
   if (d == NULL) {
     return 0;
@@ -635,42 +786,142 @@ static int64_t fs_dir_bytes_c(const char *p, int32_t depth, int32_t max_depth) {
     }
   }
   closedir(d);
-#endif
   return total;
 }
+#endif
 
 int64_t fs_dir_bytes(moonbit_string_t path, int32_t max_depth) {
+#ifdef _WIN32
+  wchar_t *w = fs_str_to_wide(path);
+  if (w == NULL) {
+    return -1;
+  }
+  int64_t r = (fs_kind_w(w) != FS_DIR) ? -1 : fs_dir_bytes_w(w, 0, max_depth);
+  free(w);
+  return r;
+#else
   char p[FS_MAX_PATH];
   fs_str_to_ascii(path, p, (int32_t)sizeof(p));
   if (fs_kind_c(p) != FS_DIR) {
     return -1;
   }
   return fs_dir_bytes_c(p, 0, max_depth);
+#endif
 }
 
 /* 列出目录下所有普通文件的完整路径，每行一条。
    内部用动态缓冲累积，最后一次性转成 MoonBit 字符串。
    ext：若为非空字符串，只保留以该扩展名结尾的文件（如 ".mbt"）。 */
+#ifdef _WIN32
+static moonbit_string_t fs_list_files_w(const wchar_t *root, const wchar_t *want_ext,
+                                        int32_t ext_len, int32_t max_depth) {
+  if (fs_kind_w(root) != FS_DIR) {
+    return moonbit_make_string(0, 0);
+  }
+  int32_t cap = 4096, len = 0;
+  wchar_t *buf = (wchar_t *)malloc((size_t)cap * sizeof(wchar_t));
+  if (buf == NULL) {
+    return moonbit_make_string(0, 0);
+  }
+  int32_t stack_cap = 64, stack_top = 0;
+  wchar_t **stack = (wchar_t **)malloc(sizeof(wchar_t *) * (size_t)stack_cap);
+  int32_t *depths = (int32_t *)malloc(sizeof(int32_t) * (size_t)stack_cap);
+  if (stack == NULL || depths == NULL) {
+    free(buf);
+    free(stack);
+    free(depths);
+    return moonbit_make_string(0, 0);
+  }
+  stack[stack_top] = _wcsdup(root);
+  depths[stack_top] = 0;
+  stack_top++;
+
+  while (stack_top > 0) {
+    stack_top--;
+    wchar_t *cur = stack[stack_top];
+    int32_t cur_depth = depths[stack_top];
+    if (cur_depth > max_depth) {
+      free(cur);
+      continue;
+    }
+    wchar_t pattern[FS_MAX_PATH + 8];
+    swprintf(pattern, sizeof(pattern) / sizeof(wchar_t), L"%ls\\*", cur);
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pattern, &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+      do {
+        if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) {
+          continue;
+        }
+        wchar_t child[FS_MAX_PATH + 8];
+        fs_join_w(child, (int32_t)(sizeof(child) / sizeof(wchar_t)), cur, fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+          if (stack_top >= stack_cap) {
+            stack_cap *= 2;
+            stack = (wchar_t **)realloc(stack, sizeof(wchar_t *) * (size_t)stack_cap);
+            depths = (int32_t *)realloc(depths, sizeof(int32_t) * (size_t)stack_cap);
+          }
+          stack[stack_top] = _wcsdup(child);
+          depths[stack_top] = cur_depth + 1;
+          stack_top++;
+        } else {
+          int32_t fn_len = (int32_t)wcslen(fd.cFileName);
+          if (ext_len == 0 || (fn_len > ext_len && wcscmp(fd.cFileName + fn_len - ext_len, want_ext) == 0)) {
+            int32_t need = (int32_t)wcslen(child);
+            if (len + need + 1 + 1 >= cap) {
+              while (len + need + 1 + 1 >= cap) {
+                cap *= 2;
+              }
+              buf = (wchar_t *)realloc(buf, (size_t)cap * sizeof(wchar_t));
+            }
+            wcscpy(buf + len, child);
+            len += need;
+            buf[len++] = L'\n';
+          }
+        }
+      } while (FindNextFileW(h, &fd));
+      FindClose(h);
+    }
+    free(cur);
+  }
+  free(stack);
+  free(depths);
+  buf[len] = 0; /* 补终止符，供 fs_wide_to_str 的 wcslen 读取 */
+  moonbit_string_t out = fs_wide_to_str(buf);
+  free(buf);
+  return out;
+}
+#endif
+
 moonbit_string_t fs_list_files(moonbit_string_t path, moonbit_string_t ext,
                                int32_t max_depth) {
+#ifdef _WIN32
+  wchar_t *w = fs_str_to_wide(path);
+  wchar_t *wext = fs_str_to_wide(ext);
+  if (w == NULL || wext == NULL) {
+    free(w);
+    free(wext);
+    return moonbit_make_string(0, 0);
+  }
+  int32_t ext_len = (int32_t)wcslen(wext);
+  moonbit_string_t out = fs_list_files_w(w, wext, ext_len, max_depth);
+  free(w);
+  free(wext);
+  return out;
+#else
   char root[FS_MAX_PATH];
   fs_str_to_ascii(path, root, (int32_t)sizeof(root));
   char want_ext[64];
   fs_str_to_ascii(ext, want_ext, (int32_t)sizeof(want_ext));
   int32_t ext_len = (int32_t)strlen(want_ext);
-
   if (fs_kind_c(root) != FS_DIR) {
     return moonbit_make_string(0, 0);
   }
-
-  /* 结果缓冲 */
   int32_t cap = 4096, len = 0;
   char *buf = (char *)malloc((size_t)cap);
   if (buf == NULL) {
     return moonbit_make_string(0, 0);
   }
-
-  /* 显式栈做深度优先遍历，避免依赖递归时的缓冲管理 */
   int32_t stack_cap = 64, stack_top = 0;
   char **stack = (char **)malloc(sizeof(char *) * (size_t)stack_cap);
   int32_t *depths = (int32_t *)malloc(sizeof(int32_t) * (size_t)stack_cap);
@@ -683,59 +934,14 @@ moonbit_string_t fs_list_files(moonbit_string_t path, moonbit_string_t ext,
   stack[stack_top] = strdup(root);
   depths[stack_top] = 0;
   stack_top++;
-
   while (stack_top > 0) {
     stack_top--;
     char *cur = stack[stack_top];
     int32_t cur_depth = depths[stack_top];
-
     if (cur_depth > max_depth) {
       free(cur);
       continue;
     }
-
-#ifdef _WIN32
-    char pattern[FS_MAX_PATH + 8];
-    snprintf(pattern, sizeof(pattern), "%s\\*", cur);
-    WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA(pattern, &fd);
-    if (h != INVALID_HANDLE_VALUE) {
-      do {
-        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) {
-          continue;
-        }
-        char child[FS_MAX_PATH + 8];
-        fs_join(child, (int32_t)sizeof(child), cur, fd.cFileName);
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-          if (stack_top >= stack_cap) {
-            stack_cap *= 2;
-            stack = (char **)realloc(stack, sizeof(char *) * (size_t)stack_cap);
-            depths = (int32_t *)realloc(depths, sizeof(int32_t) * (size_t)stack_cap);
-          }
-          stack[stack_top] = strdup(child);
-          depths[stack_top] = cur_depth + 1;
-          stack_top++;
-        } else {
-          if (ext_len == 0 ||
-              (int32_t)strlen(fd.cFileName) > ext_len &&
-                  strcmp(fd.cFileName + strlen(fd.cFileName) - (size_t)ext_len,
-                         want_ext) == 0) {
-            int32_t need = (int32_t)strlen(child) + 1;
-            if (len + need + 1 >= cap) {
-              while (len + need + 1 >= cap) {
-                cap *= 2;
-              }
-              buf = (char *)realloc(buf, (size_t)cap);
-            }
-            memcpy(buf + len, child, (size_t)need - 1);
-            len += need - 1;
-            buf[len++] = '\n';
-          }
-        }
-      } while (FindNextFileA(h, &fd));
-      FindClose(h);
-    }
-#else
     DIR *d = opendir(cur);
     if (d != NULL) {
       struct dirent *e;
@@ -759,9 +965,8 @@ moonbit_string_t fs_list_files(moonbit_string_t path, moonbit_string_t ext,
           depths[stack_top] = cur_depth + 1;
           stack_top++;
         } else if (S_ISREG(st.st_mode)) {
-          if (ext_len == 0 ||
-              ((int32_t)strlen(e->d_name) > ext_len &&
-               strcmp(e->d_name + strlen(e->d_name) - (size_t)ext_len, want_ext) == 0)) {
+          int32_t fn_len = (int32_t)strlen(e->d_name);
+          if (ext_len == 0 || (fn_len > ext_len && strcmp(e->d_name + fn_len - ext_len, want_ext) == 0)) {
             int32_t need = (int32_t)strlen(child) + 1;
             if (len + need + 1 >= cap) {
               while (len + need + 1 >= cap) {
@@ -777,13 +982,12 @@ moonbit_string_t fs_list_files(moonbit_string_t path, moonbit_string_t ext,
       }
       closedir(d);
     }
-#endif
     free(cur);
   }
-
   free(stack);
   free(depths);
   moonbit_string_t out = fs_ascii_to_str(buf, len);
   free(buf);
   return out;
+#endif
 }
