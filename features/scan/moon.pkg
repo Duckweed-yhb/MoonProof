@@ -1,0 +1,7 @@
+///|
+/// features/scan — 扫描目录、筛选 .md / .mbt
+///
+/// 应用层：遍历文件系统，依赖 FFI，仅 native。
+supported_targets = "native"
+
+import {}

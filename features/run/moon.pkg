@@ -1,0 +1,7 @@
+///|
+/// features/run — 编排：抽取 → 合成 → 执行 → 归因 → 报告
+///
+/// 应用层：依赖 exec 与各纯计算层，仅 native。
+supported_targets = "native"
+
+import {}

@@ -1,0 +1,8 @@
+///|
+/// exec/workspace — 一次性隔离工作区
+///
+/// 执行层：示例代码来源不可控，必须在一次性隔离工作区内编译运行，
+/// 带生命周期管理与清理。含 C FFI，仅 native。
+supported_targets = "native"
+
+import {}

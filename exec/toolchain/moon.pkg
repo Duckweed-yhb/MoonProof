@@ -1,0 +1,7 @@
+///|
+/// exec/toolchain — 调起 moon check / moon test
+///
+/// 执行层：子进程执行 + 输出捕获 + 超时控制。含 C FFI，仅 native。
+supported_targets = "native"
+
+import {}

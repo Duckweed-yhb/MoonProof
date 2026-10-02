@@ -1,0 +1,8 @@
+///|
+/// synth/package — 代码块 → 最小可编译包 + 行号映射表
+///
+/// 纯计算层：为每个代码块合成一个独立的最小 moon 包，
+/// 并同步生成"合成包行号 ↔ 原文档行号"的映射表，四后端可移植。
+supported_targets = "wasm+wasm-gc+js+native"
+
+import {}

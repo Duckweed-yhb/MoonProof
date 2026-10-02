@@ -1,0 +1,8 @@
+///|
+/// extract/markdown — Markdown 代码块抽取与信息串标注解析
+///
+/// 纯计算层：只吃文本、返回抽取结果，不 import 任何 FFI 包，
+/// 因此可在 wasm / wasm-gc / js / native 四后端编译与测试。
+supported_targets = "wasm+wasm-gc+js+native"
+
+import {}

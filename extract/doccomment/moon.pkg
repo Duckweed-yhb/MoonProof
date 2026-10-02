@@ -1,0 +1,7 @@
+///|
+/// extract/doccomment — .mbt 源文件文档注释（///）代码块抽取
+///
+/// 纯计算层，四后端可移植。
+supported_targets = "wasm+wasm-gc+js+native"
+
+import {}

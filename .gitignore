@@ -1,0 +1,23 @@
+# MoonBit build artifacts & local cache
+target/
+_build/
+.mooncakes/
+*.mbti
+_probe_import/
+
+# Personal application materials (submitted via portal)
+申报书*.md
+
+# Competition prep notes (internal, not for public repo)
+备赛说明.md
+
+# OS / editor / temp files
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.log
+*.tmp
+*.swp
+.vscode/
+.idea/
+.preview/

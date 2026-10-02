@@ -1,0 +1,8 @@
+///|
+/// diagnose/classify — 编译输出归因分类
+///
+/// 纯计算层：把编译器输出归因为「语法/类型错误」「API 已变更」
+/// 「依赖缺失」「工具链不兼容」等类别。四后端可移植。
+supported_targets = "wasm+wasm-gc+js+native"
+
+import {}

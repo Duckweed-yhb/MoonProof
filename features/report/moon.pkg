@@ -1,0 +1,7 @@
+///|
+/// features/report — 控制台 / JSON 输出
+///
+/// 纯计算层：只吃结构化结果、返回文本与 JSON，四后端可移植。
+supported_targets = "wasm+wasm-gc+js+native"
+
+import {}
