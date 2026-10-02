@@ -25,6 +25,12 @@ pub fn moon_test(module_dir : String, timeout_ms : Int) -> Result[ToolOutput, St
 }
 
 ///|
+/// 在 module_dir 中执行 `moon run main`（Run 标注：真正运行示例 main）。
+pub fn moon_run(module_dir : String, timeout_ms : Int) -> Result[ToolOutput, String] {
+  run_tool("moon run main", module_dir, timeout_ms)
+}
+
+///|
 /// 通用工具链执行。失败（无法创建进程等）返回 Err；命令本身非零退出码不算失败。
 fn run_tool(cmd : String, module_dir : String, timeout_ms : Int) -> Result[ToolOutput, String] {
   match @proc.run(cmd, module_dir, timeout_ms) {
