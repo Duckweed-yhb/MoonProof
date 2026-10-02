@@ -1,8 +1,7 @@
 ///|
 /// exec/workspace — 隔离工作区（目录生命周期、配额、清理）
 ///
-/// 复用自 MoonHive 的 verify/workspace（来源：
-/// 03-竞赛/MoonBit-Hackathon/2026-09/moon-hive/verify/workspace/）。
+/// 复用自 MoonHive 的 verify/workspace（来源：https://github.com/Duckweed-yhb/moon-hive）。
 /// 依赖 platform/fs 与 platform/proc 的 C FFI，仅 native。
 supported_targets = "native"
 

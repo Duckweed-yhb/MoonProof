@@ -99,7 +99,7 @@ CI（`.github/workflows/ci.yml`）在 Linux / Windows 双平台跑：build + tes
 本项目许可证为 **MIT**。
 
 `platform/proc`、`platform/fs`、`exec/workspace` 三个模块复用于作者此前的 MoonHive 项目
-（`03-竞赛/MoonBit-Hackathon/2026-09/moon-hive/`），仅修改包名以适配本模块，其余为 MoonProof 原创实现。
+（<https://github.com/Duckweed-yhb/moon-hive>，MIT 许可证），仅修改包名以适配本模块，其余为 MoonProof 原创实现。
 `extract`、`synth`、`diagnose`、`features` 各层均为原创，未照搬第三方代码。
 
 ---
