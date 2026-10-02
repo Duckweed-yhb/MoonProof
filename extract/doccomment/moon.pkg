@@ -1,7 +1,11 @@
 ///|
 /// extract/doccomment — .mbt 源文件文档注释（///）代码块抽取
 ///
-/// 纯计算层，四后端可移植。
+/// 纯计算层，四后端可移植。复用 extract/markdown 的行级状态机
+/// （extract_lines），只需把文档注释行去前缀后作为行输入，
+/// 再把行号映射回 .mbt 源文件行号。
 supported_targets = "wasm+wasm-gc+js+native"
 
-import {}
+import {
+  "Duckweed/moon-proof/extract/markdown" @markdown,
+}

@@ -52,12 +52,34 @@ pub struct ExtractResult {
 }
 
 ///|
+/// 构造一个代码块（供跨包复用，如 doccomment 做行号重映射）。
+pub fn make_block(start_line : Int, end_line : Int, code : String, kind : Kind) -> CodeBlock {
+  { start_line, end_line, code, kind }
+}
+
+///|
+/// 构造抽取结果（供跨包复用）。
+pub fn make_result(path : String, blocks : Array[CodeBlock]) -> ExtractResult {
+  { path, blocks }
+}
+
+///|
 /// 从 Markdown 文本抽取全部 moonbit 代码块。
 pub fn extract(text : String, path : String) -> ExtractResult {
   // 规范化换行：Markdown 常为 CRLF，统一为 LF 便于行号与内容稳定。
   // 注意 core 的 String::replace 只替换首个匹配，这里用 split+join 做全局替换。
   let norm = replace_all(replace_all(text, "\r\n", "\n"), "\r", "\n")
   let lines : Array[String] = norm.split("\n").map(fn(v) { v.to_owned() }).to_array()
+  extract_lines(lines, path)
+}
+
+///|
+/// 对行数组抽取全部 moonbit 代码块。
+///
+/// 供本包的 extract（Markdown）与 extract/doccomment 复用：只要把
+/// 目标文本按行拆开即可，行号以数组下标为基准（1-based），由调用方
+/// 决定如何映射回真实源文件行号。
+pub fn extract_lines(lines : Array[String], path : String) -> ExtractResult {
   let blocks : Array[CodeBlock] = []
   let mut i = 0
   let n = lines.length()
