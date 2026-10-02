@@ -18,9 +18,10 @@ MoonProof 是一个 **库 + CLI**。MoonBit 工具链迭代快，文档里的示
 
 ```bash
 moon run cmd/moonproof -- .
+moon run cmd/moonproof -- ./docs --verbose   # 失败块附带具体编译错误，便于定位
 ```
 
-上面的命令会扫描当前目录下的 `.md` 文档，把每个 ```moonbit 代码块抽出来、在隔离工作区里真实编译（`run` 标注则真正运行），并输出每块的结果与失败归因。
+上面的命令会扫描当前目录下的 `.md` 文档，把每个 ```moonbit 代码块抽出来、在隔离工作区里真实编译（`run` 标注则真正运行），并输出每块的结果与失败归因。加 `--verbose`（或 `-v`）时，每个失败块会缩进输出诊断详情。
 
 下面这个代码块由 MoonProof 在 CI 里**自举验证**（dogfooding）：
 

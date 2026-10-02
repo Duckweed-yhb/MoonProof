@@ -67,8 +67,20 @@ pub fn make_report(path : String, blocks : Array[BlockResult]) -> DocReport {
 }
 
 ///|
-/// 渲染成多行文本报告（每块一行）。
+/// 渲染成多行文本报告（每块一行）。非 verbose：只给 verdict。
 pub fn render_text(r : DocReport) -> String {
+  render_text_impl(r, false)
+}
+
+///|
+/// 同 render_text，但对失败块附带输出诊断详情（缩进），便于文档作者定位。
+pub fn render_text_verbose(r : DocReport) -> String {
+  render_text_impl(r, true)
+}
+
+///|
+/// 实现；verbose 时在失败/带详情块下追加缩进的 detail。
+fn render_text_impl(r : DocReport, verbose : Bool) -> String {
   let mut s = ""
   s = s + "== " + r.path + " ==\n"
   for b in r.blocks {
@@ -79,9 +91,23 @@ pub fn render_text(r : DocReport) -> String {
     }
     line = line + "\n"
     s = s + line
+    if verbose && b.detail.length() > 0 {
+      s = s + indent(b.detail)
+    }
   }
   s = s + summarize(r) + "\n"
   s
+}
+
+///|
+/// 把多行诊断逐行加 4 空格缩进。
+fn indent(detail : String) -> String {
+  let mut out = ""
+  let lines = detail.split("\n")
+  for l in lines {
+    out = out + "    " + l.to_owned() + "\n"
+  }
+  out
 }
 
 ///|

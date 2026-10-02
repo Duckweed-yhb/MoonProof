@@ -8,12 +8,16 @@ fn main {
   let argv = @env.args()
   let mut root = "."
   let mut timeout_ms = 60000
+  let mut verbose = false
   let mut i = 1
   while i < argv.length() {
     let a = argv[i]
     if a == "--timeout" && i + 1 < argv.length() {
       timeout_ms = parse_int(argv[i + 1])
       i = i + 2
+    } else if a == "--verbose" || a == "-v" {
+      verbose = true
+      i = i + 1
     } else if a == "--help" || a == "-h" {
       print_usage()
       @proc.exit_with(0)
@@ -30,7 +34,11 @@ fn main {
     Ok(reports) => {
       let mut any_fail = false
       for r in reports {
-        println(@report.render_text(r))
+        if verbose {
+          println(@report.render_text_verbose(r))
+        } else {
+          println(@report.render_text(r))
+        }
         if r.failed > 0 {
           any_fail = true
         }
@@ -51,7 +59,7 @@ fn main {
 ///|
 fn print_usage() -> Unit {
   println("MoonProof — 验证 MoonBit 文档与教程里的代码示例")
-  println("用法: moon run cmd/moonproof -- [目录] [--timeout <毫秒>]")
+  println("用法: moon run cmd/moonproof -- [目录] [--timeout <毫秒>] [--verbose]")
 }
 
 ///|
