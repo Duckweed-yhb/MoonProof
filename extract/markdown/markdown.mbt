@@ -58,6 +58,13 @@ pub fn make_block(start_line : Int, end_line : Int, code : String, kind : Kind) 
 }
 
 ///|
+/// Kind 工厂函数（枚举构造器跨包不可直接引用，故暴露函数）。
+pub fn compile_kind() -> Kind { Compile }
+pub fn run_kind() -> Kind { Run }
+pub fn no_check_kind() -> Kind { NoCheck }
+pub fn should_fail_kind() -> Kind { ShouldFail }
+
+///|
 /// 构造抽取结果（供跨包复用）。
 pub fn make_result(path : String, blocks : Array[CodeBlock]) -> ExtractResult {
   { path, blocks }

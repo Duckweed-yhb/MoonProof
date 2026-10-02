@@ -1,8 +1,19 @@
 ///|
 /// synth/package — 代码块 → 最小可编译包 + 行号映射表
 ///
-/// 纯计算层：为每个代码块合成一个独立的最小 moon 包，
-/// 并同步生成"合成包行号 ↔ 原文档行号"的映射表，四后端可移植。
+/// 纯计算层：为每个代码块合成一个独立的、可直接被 moon 工具链编译的
+/// 最小模块，并同步生成「合成包行号 ↔ 原文档行号」的映射表。
+///
+/// 一个合成模块的结构（相对工作区）：
+///   <name>/
+///     moon.mod         模块声明（独立 name）
+///     main/moon.pkg    包声明（Run 标注为 is_main，否则普通包）
+///     main/main.mbt    代码块内容（原样写入，不包裹）
+///
+/// 行号映射原理：main.mbt 内容 = 代码块原样，因此合成包第 k 行对应
+/// 原文档的 (block.start_line + k) 行。映射表 line_map[i] = 原文档行号。
 supported_targets = "wasm+wasm-gc+js+native"
 
-import {}
+import {
+  "Duckweed/moon-proof/extract/markdown" @markdown,
+}
