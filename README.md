@@ -17,9 +17,11 @@ MoonProof 是一个 **库 + CLI**。MoonBit 工具链迭代快，文档里的示
 ## 快速开始
 
 ```bash
-moon run cmd/moonproof -- .
-moon run cmd/moonproof -- ./docs --verbose   # 失败块附带具体编译错误，便于定位
+moon run --target native cmd/moonproof -- .
+moon run --target native cmd/moonproof -- ./docs --verbose   # 失败块附带具体编译错误，便于定位
 ```
+
+> 注意：`cmd/moonproof` 是 native-only 的 CLI。**`moon run` 必须带 `--target native`**，否则 moon 默认选 wasm 后端会报 "does not support target backend 'wasm'"。
 
 上面的命令会扫描当前目录下的 `.md` 文档，把每个 ```moonbit 代码块抽出来、在隔离工作区里真实编译（`run` 标注则真正运行），并输出每块的结果与失败归因。加 `--verbose`（或 `-v`）时，每个失败块会缩进输出诊断详情。
 
