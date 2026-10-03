@@ -209,6 +209,31 @@ static int32_t mkdir_all_c(char *p) {
   }
   return 0;
 }
+
+/* 非 Windows：递归删除。不跟随符号链接。 */
+static int32_t fs_rm_rf_c(const char *p) {
+  int32_t kind = fs_kind_c(p);
+  if (kind == FS_NONE) {
+    return 0;
+  }
+  if (kind != FS_DIR) {
+    return (remove(p) == 0) ? 0 : -1;
+  }
+  DIR *d = opendir(p);
+  if (d != NULL) {
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+      if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) {
+        continue;
+      }
+      char child[FS_MAX_PATH + 8];
+      fs_join(child, (int32_t)sizeof(child), p, e->d_name);
+      fs_rm_rf_c(child);
+    }
+    closedir(d);
+  }
+  return (rmdir(p) == 0) ? 0 : -1;
+}
 #endif
 
 /* ---------- 路径查询 ---------- */
