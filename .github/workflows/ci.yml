@@ -60,4 +60,4 @@ jobs:
       - name: Setup MoonBit
         uses: hustcer/setup-moonbit@v1
       - name: Cram CLI smoke
-        run: moon cram test cram
+        run: moon cram test
