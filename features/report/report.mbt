@@ -20,6 +20,8 @@ pub struct BlockResult {
   verdict : String
   /// 失败时的诊断摘要（stderr 首段）；成功或跳过为空串
   detail : String
+  /// 失败时按归因标签给出的可行动修复建议；成功/跳过/无归因时为空串
+  suggestion : String
 }
 
 ///|
@@ -34,16 +36,18 @@ pub struct DocReport {
 }
 
 ///|
-/// 构造一个块级结果（跨包用）。
+/// 构造一个块级结果（跨包用）。suggestion 由 run 层按 verdict 生成，
+/// 非归因类失败传空串。
 pub fn make_block_result(
   path : String,
   start_line : Int,
   kind : String,
   status : String,
   verdict : String,
-  detail : String
+  detail : String,
+  suggestion : String
 ) -> BlockResult {
-  { path, start_line, kind, status, verdict, detail }
+  { path, start_line, kind, status, verdict, detail, suggestion }
 }
 
 ///|
@@ -94,6 +98,10 @@ fn render_text_impl(r : DocReport, verbose : Bool) -> String {
     if verbose && b.detail.length() > 0 {
       s = s + indent(b.detail)
     }
+    if verbose && b.suggestion.length() > 0 {
+      s = s + "    → 建议："
+      s = s + b.suggestion + "\n"
+    }
   }
   s = s + summarize(r) + "\n"
   s
@@ -126,9 +134,9 @@ test "空文档汇总为零" {
 }
 
 test "汇总正确计数 pass/fail/skip" {
-  let b1 = make_block_result("a.md", 3, "compile", "pass", "", "")
-  let b2 = make_block_result("a.md", 10, "compile", "fail", "api-changed", "has no method")
-  let b3 = make_block_result("a.md", 20, "compile", "skip", "", "")
+  let b1 = make_block_result("a.md", 3, "compile", "pass", "", "", "")
+  let b2 = make_block_result("a.md", 10, "compile", "fail", "api-changed", "has no method", "查 API 当前签名")
+  let b3 = make_block_result("a.md", 20, "compile", "skip", "", "", "")
   let r = make_report("a.md", [b1, b2, b3])
   assert_eq(r.total, 3)
   assert_eq(r.passed, 1)
@@ -137,7 +145,7 @@ test "汇总正确计数 pass/fail/skip" {
 }
 
 test "渲染包含路径与状态" {
-  let b1 = make_block_result("a.md", 3, "compile", "pass", "", "")
+  let b1 = make_block_result("a.md", 3, "compile", "pass", "", "", "")
   let r = make_report("a.md", [b1])
   let t = render_text(r)
   assert_true(t.contains("a.md"))
@@ -146,8 +154,23 @@ test "渲染包含路径与状态" {
 }
 
 test "失败块带归因标签" {
-  let b1 = make_block_result("a.md", 5, "compile", "fail", "api-changed", "has no method exact_view")
+  let b1 = make_block_result("a.md", 5, "compile", "fail", "api-changed", "has no method exact_view", "查 API 当前签名")
   let r = make_report("a.md", [b1])
   let t = render_text(r)
   assert_true(t.contains("api-changed"))
+}
+
+test "verbose 渲染包含修复建议，非 verbose 不含" {
+  let b1 = make_block_result("a.md", 5, "compile", "fail", "api-changed", "has no method exact_view", "查 API 当前签名")
+  let r = make_report("a.md", [b1])
+  assert_true(render_text(r).contains("api-changed"))
+  assert_true(render_text_verbose(r).contains("→ 建议："))
+  assert_true(render_text_verbose(r).contains("查 API 当前签名"))
+  assert_false(render_text(r).contains("→ 建议："))
+}
+
+test "无建议的失败块 verbose 也不输出建议行" {
+  let b1 = make_block_result("a.md", 5, "compile", "fail", "", "write failed", "")
+  let r = make_report("a.md", [b1])
+  assert_false(render_text_verbose(r).contains("→ 建议："))
 }

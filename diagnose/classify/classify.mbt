@@ -78,6 +78,25 @@ pub fn classify(stdout : String, stderr : String) -> Verdict {
 }
 
 ///|
+/// 按归因标签给出**可行动的修复建议**，帮助文档作者判断下一步怎么改。
+/// 返回的是一句可直接照做的中文提示；无法给出建议（未知标签）时返回
+/// 通用兜底（compile-error 文案）。
+pub fn suggestion_for_label(label : String) -> String {
+  match label {
+    "api-changed" =>
+      "报错指向了不存在的 API，更可能是工具链演进导致的 API 变更而非例子写错。查 MoonBit 标准库当前签名（mooncakes.io 或本地 core），把代码块更新到新 API。"
+    "missing-dependency" =>
+      "import 的包/模块在当前依赖里不存在。检查模块名拼写；官方包需先 `moon add` 并在 moon.mod 声明；第三方包确认组织/包名正确。"
+    "toolchain-mismatch" =>
+      "工具链/后端不兼容。运行 `moon upgrade` 升级工具链，或改用支持的后端验证；若代码块依赖 native-only 能力，建议在文档中注明。"
+    "missing-main" =>
+      "`run` 标注要求顶层 `fn main` 入口。补一个最小 `fn main() { ... }`；若只是片段、不应运行，改回默认 `compile`（去掉 run 标注）。"
+    _ =>
+      "例子本身有语法/类型错误。对照报错中的文件与行号修正代码块；若是刻意演示报错，改用 `should-fail` 标注。"
+  }
+}
+
+///|
 /// text 中是否包含任一特征串（小写后匹配）。
 fn contains_any(text : String, needles : Array[String]) -> Bool {
   for n in needles {
@@ -137,4 +156,24 @@ test "大小写不敏感" {
 test "stdout 也被检查" {
   let v = classify("unresolved identifier xyz", "")
   assert_eq(v.label(), "api-changed")
+}
+
+test "每个归因标签都有非空建议" {
+  for l in ["compile-error", "api-changed", "missing-dependency", "toolchain-mismatch", "missing-main"] {
+    assert_true(suggestion_for_label(l).length() > 10)
+  }
+}
+
+test "api-changed 建议指向 API 变更而非例子写错" {
+  assert_true(suggestion_for_label("api-changed").contains("API 变更"))
+}
+
+test "missing-main 建议给出补 main 或改标注的动作" {
+  let s = suggestion_for_label("missing-main")
+  assert_true(s.contains("fn main"))
+  assert_true(s.contains("run"))
+}
+
+test "未知标签兜底为 compile-error 文案" {
+  assert_true(suggestion_for_label("bogus").contains("compile-error") || suggestion_for_label("bogus").contains("语法/类型"))
 }

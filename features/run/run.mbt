@@ -64,16 +64,16 @@ fn verify_block(
   let kind = block.kind.name()
   let start = block.start_line
   if kind == "no-check" {
-    return @report.make_block_result(doc_path, start, kind, "skip", "", "")
+    return @report.make_block_result(doc_path, start, kind, "skip", "", "", "")
   }
   let sr = @synth.synth_block(block, index, doc_path)
   let dir = match @workspace.alloc(ws, sr.name) {
     Ok(d) => d
-    Err(_) => return @report.make_block_result(doc_path, start, kind, "fail", "", "workspace alloc failed")
+    Err(_) => return @report.make_block_result(doc_path, start, kind, "fail", "", "workspace alloc failed", "")
   }
   for f in sr.files {
     if !write_file(dir, f.path, f.content) {
-      return @report.make_block_result(doc_path, start, kind, "fail", "", "write failed: " + f.path)
+      return @report.make_block_result(doc_path, start, kind, "fail", "", "write failed: " + f.path, "")
     }
   }
   let out = if kind == "run" {
@@ -85,18 +85,26 @@ fn verify_block(
     Ok(o) =>
       if kind == "should-fail" {
         if o.exit_code == 0 {
-          @report.make_block_result(doc_path, start, kind, "fail", "", "expected to fail but compiled ok")
+          @report.make_block_result(doc_path, start, kind, "fail", "", "expected to fail but compiled ok", "")
         } else {
-          @report.make_block_result(doc_path, start, kind, "pass", "", "")
+          @report.make_block_result(doc_path, start, kind, "pass", "", "", "")
         }
       } else if o.exit_code == 0 {
-        @report.make_block_result(doc_path, start, kind, "pass", "", "")
+        @report.make_block_result(doc_path, start, kind, "pass", "", "", "")
       } else {
         let verdict = @classify.classify(o.stdout, o.stderr).label()
-        @report.make_block_result(doc_path, start, kind, "fail", verdict, short(o.stderr))
+        @report.make_block_result(
+          doc_path,
+          start,
+          kind,
+          "fail",
+          verdict,
+          short(o.stderr),
+          @classify.suggestion_for_label(verdict),
+        )
       }
     Err(e) =>
-      @report.make_block_result(doc_path, start, kind, "fail", "", short(e))
+      @report.make_block_result(doc_path, start, kind, "fail", "", short(e), "")
   }
 }
 
