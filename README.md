@@ -7,7 +7,14 @@
 
 MoonProof 是一个 **库 + CLI**。MoonBit 工具链迭代快，文档里的示例会不断腐坏——学习者照着敲得到编译错误然后卡住，而写文档的人并不知道哪些例子已经失效。MoonProof 让示例像代码一样被 **CI 持续验证**。
 
-对比三个成熟生态都有的机制：Rust 有 `rustdoc --test`、Python 有 `doctest`、Go 有 `go test` Example——**MoonBit 目前没有**，这正是 MoonProof 补的生态位。
+MoonBit 官方已提供**标注驱动**的文档测试：doc comments 里的 `mbt check` 块、以及 literate `.mbt.md` 文件（`mbt check` / `mbt nocheck`），都由 `moon check` / `moon test` 自动验证——但**仅在文档作者主动采用这些标注时生效**。MoonProof 与官方机制**互补**，专门解决**未被标注的既有文档**：
+
+- 直接扫描**任意 `.md`**（README、教程、历史文档）里的普通 ```moonbit``` 块——官方对这类块明确"仅展示、不编译测试"；
+- 用**代码块信息串**（`run` / `no-check` / `should-fail`）声明期望，容忍片段性示例，不必改写原文档；
+- 失败给出**归因分类 + 修复建议**（api-changed / missing-dependency / toolchain-mismatch / …）；
+- 支持**批量生态审计**：已对官方错误码 572 项、官方教程 38 块产出失效清单（见 `docs/`）。
+
+一句话：官方机制回答"**标注过的示例**还对不对"，MoonProof 回答"**我仓库里已有的文档**哪些例子已经失效"。
 
 - 许可证：MIT
 - 主要语言：MoonBit
