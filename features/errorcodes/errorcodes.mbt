@@ -88,7 +88,7 @@ pub fn verify_errorcodes(root : String, opts : EcOptions) -> Result[EcReport, St
       )
       continue
     }
-    let out = match @toolchain.moon_check(work, opts.timeout_ms) {
+    let out = match @toolchain.moon_check(work, opts.timeout_ms, "") {
       Ok(o) => o
       Err(e) =>
         {

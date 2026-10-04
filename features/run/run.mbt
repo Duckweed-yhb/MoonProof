@@ -14,18 +14,26 @@
 /// 一次验证的运行选项
 pub struct RunOptions {
   timeout_ms : Int
+  /// 验证文档代码块用的后端（传给 moon check/test `--target`）；空串表示不指定
+  target : String
 }
 
 ///|
 /// 默认选项：单块编译超时 60s。
 pub fn default_options() -> RunOptions {
-  { timeout_ms: 60000 }
+  { timeout_ms: 60000, target: "" }
 }
 
 ///|
 /// 显式指定超时构造选项（跨包用）。
 pub fn make_options(timeout_ms : Int) -> RunOptions {
-  { timeout_ms: timeout_ms }
+  { timeout_ms: timeout_ms, target: "" }
+}
+
+///|
+/// 显式指定超时与后端构造选项（跨包用）。
+pub fn make_options_with_target(timeout_ms : Int, target : String) -> RunOptions {
+  { timeout_ms, target }
 }
 
 ///|
@@ -43,7 +51,7 @@ pub fn run_docs(root : String, opts : RunOptions) -> Result[Array[@report.DocRep
     let res = @markdown.extract(text, p)
     let blocks : Array[@report.BlockResult] = []
     for b in res.blocks {
-      blocks.push(verify_block(ws, b, p, counter, opts.timeout_ms))
+      blocks.push(verify_block(ws, b, p, counter, opts.timeout_ms, opts.target))
       counter = counter + 1
     }
     reports.push(@report.make_report(p, blocks))
@@ -59,7 +67,8 @@ fn verify_block(
   block : @markdown.CodeBlock,
   doc_path : String,
   index : Int,
-  timeout_ms : Int
+  timeout_ms : Int,
+  target : String
 ) -> @report.BlockResult {
   let kind = block.kind.name()
   let start = block.start_line
@@ -77,9 +86,9 @@ fn verify_block(
     }
   }
   let out = if kind == "run" {
-    @toolchain.moon_run(dir, timeout_ms)
+    @toolchain.moon_run(dir, timeout_ms, target)
   } else {
-    @toolchain.moon_check(dir, timeout_ms)
+    @toolchain.moon_check(dir, timeout_ms, target)
   }
   match out {
     Ok(o) =>

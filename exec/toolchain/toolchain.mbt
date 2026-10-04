@@ -20,26 +20,33 @@ pub struct ToolOutput {
 
 ///|
 /// 在 module_dir 中执行 `moon check`（默认验证动作）。
-pub fn moon_check(module_dir : String, timeout_ms : Int) -> Result[ToolOutput, String] {
-  run_tool("check", module_dir, timeout_ms)
+/// target 非空时附加 `--target <target>`（如 "wasm" / "js" / "native"），
+/// 空串则使用 moon 的默认后端。
+pub fn moon_check(module_dir : String, timeout_ms : Int, target : String) -> Result[ToolOutput, String] {
+  run_tool("check", module_dir, target, timeout_ms)
 }
 
 ///|
 /// 在 module_dir 中执行 `moon test`（Run 标注的验证动作）。
-pub fn moon_test(module_dir : String, timeout_ms : Int) -> Result[ToolOutput, String] {
-  run_tool("test", module_dir, timeout_ms)
+pub fn moon_test(module_dir : String, timeout_ms : Int, target : String) -> Result[ToolOutput, String] {
+  run_tool("test", module_dir, target, timeout_ms)
 }
 
 ///|
 /// 在 module_dir 中执行 `moon run main`（Run 标注：真正运行示例 main）。
-pub fn moon_run(module_dir : String, timeout_ms : Int) -> Result[ToolOutput, String] {
-  run_tool("run main", module_dir, timeout_ms)
+pub fn moon_run(module_dir : String, timeout_ms : Int, target : String) -> Result[ToolOutput, String] {
+  run_tool("run main", module_dir, target, timeout_ms)
 }
 
 ///|
 /// 通用工具链执行。失败（无法创建进程等）返回 Err；命令本身非零退出码不算失败。
-fn run_tool(sub : String, module_dir : String, timeout_ms : Int) -> Result[ToolOutput, String] {
-  let cmd = moon_command(sub)
+fn run_tool(
+  sub : String,
+  module_dir : String,
+  target : String,
+  timeout_ms : Int
+) -> Result[ToolOutput, String] {
+  let cmd = moon_command(sub, target)
   match @proc.run(cmd, module_dir, timeout_ms) {
     Ok(o) => Ok({ exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr })
     Err(e) => Err(proc_error_message(e))
@@ -47,9 +54,13 @@ fn run_tool(sub : String, module_dir : String, timeout_ms : Int) -> Result[ToolO
 }
 
 ///|
-/// 组装 moon 命令：`<moon_exe> <sub>`，exe 加引号以防路径含空格。
-fn moon_command(sub : String) -> String {
-  quote(moon_exe()) + " " + sub
+/// 组装 moon 命令：`<moon_exe> <sub> [--target <t>]`，exe 加引号以防路径含空格。
+fn moon_command(sub : String, target : String) -> String {
+  let mut c = quote(moon_exe()) + " " + sub
+  if target.length() > 0 {
+    c = c + " --target " + target
+  }
+  c
 }
 
 ///|

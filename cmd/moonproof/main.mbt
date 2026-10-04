@@ -18,6 +18,8 @@ pub struct ParsedArgs {
   err_dir : String
   /// --out 的 JSON 输出路径（仅错误码模式）
   out_path : String
+  /// --target 的验证后端（wasm / js / native；空串表示不指定）
+  target : String
   /// 解析结果动作：docs / errorcodes / help / error
   action : String
   /// action == "error" 时的提示
@@ -33,6 +35,7 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
   let mut verbose = false
   let mut err_dir = ""
   let mut out_path = ""
+  let mut target = ""
   let mut i = 1
   while i < argv.length() {
     let a = argv[i]
@@ -48,19 +51,40 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
     } else if a == "--out" && i + 1 < argv.length() {
       out_path = argv[i + 1]
       i = i + 2
+    } else if a == "--target" && i + 1 < argv.length() {
+      target = argv[i + 1]
+      i = i + 2
     } else if a == "--help" || a == "-h" {
-      return { root, timeout_ms, verbose, err_dir, out_path, action: "help", error: "" }
+      return {
+        root,
+        timeout_ms,
+        verbose,
+        err_dir,
+        out_path,
+        target,
+        action: "help",
+        error: "",
+      }
     } else if a.has_prefix("--") {
-      return { root, timeout_ms, verbose, err_dir, out_path, action: "error", error: "unknown option: " + a }
+      return {
+        root,
+        timeout_ms,
+        verbose,
+        err_dir,
+        out_path,
+        target,
+        action: "error",
+        error: "unknown option: " + a,
+      }
     } else {
       root = a
       i = i + 1
     }
   }
   if err_dir.length() > 0 {
-    { root, timeout_ms, verbose, err_dir, out_path, action: "errorcodes", error: "" }
+    { root, timeout_ms, verbose, err_dir, out_path, target, action: "errorcodes", error: "" }
   } else {
-    { root, timeout_ms, verbose, err_dir, out_path, action: "docs", error: "" }
+    { root, timeout_ms, verbose, err_dir, out_path, target, action: "docs", error: "" }
   }
 }
 
@@ -76,15 +100,22 @@ fn main {
       @proc.exit_with(2)
     }
     "errorcodes" => run_errorcodes(args.err_dir, args.timeout_ms, args.out_path)
-    _ => run_docs(args.root, args.timeout_ms, args.verbose, args.out_path)
+    _ => run_docs(args.root, args.timeout_ms, args.verbose, args.out_path, args.target)
   }
 }
 
 ///|
 /// 文档验证模式：扫描目录下 .md 里的 moonbit 代码块并验证。
 /// out_path 非空时，把全部文档报告导出为 JSON 数组。
-fn run_docs(root : String, timeout_ms : Int, verbose : Bool, out_path : String) -> Unit {
-  let opts = @run.make_options(timeout_ms)
+/// target 非空时用 `--target <t>` 指定验证后端。
+fn run_docs(
+  root : String,
+  timeout_ms : Int,
+  verbose : Bool,
+  out_path : String,
+  target : String
+) -> Unit {
+  let opts = @run.make_options_with_target(timeout_ms, target)
   match @run.run_docs(root, opts) {
     Ok(reports) => {
       let mut any_fail = false
@@ -235,6 +266,18 @@ test "目录与 --verbose 可混用" {
   assert_eq(a.root, "./docs")
   assert_true(a.verbose)
   assert_eq(a.action, "docs")
+}
+
+test "--target 设置验证后端" {
+  let a = parse_args(["moonproof", "--target", "wasm"])
+  assert_eq(a.target, "wasm")
+  assert_eq(a.action, "docs")
+}
+
+test "--target 与目录混用" {
+  let a = parse_args(["moonproof", "./docs", "--target", "js"])
+  assert_eq(a.root, "./docs")
+  assert_eq(a.target, "js")
 }
 
 test "parse_int 解析与非法回退" {
