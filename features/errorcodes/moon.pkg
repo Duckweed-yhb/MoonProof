@@ -1,0 +1,22 @@
+///|
+/// features/errorcodes — 官方错误码一致性验证（native）
+///
+/// 扫描 MoonBit 官方文档 `sources/error_codes` 根目录：每个错误码有
+/// `NNNN_error`（故意写错以触发错误码 NNNN）与 `NNNN_fixed`（修复版）
+/// 两个独立小项目。本模块对每个项目做真实 `moon check`，断言：
+///   - `NNNN_error` 必须编译失败（触发该错误码）
+///   - `NNNN_fixed` 必须编译通过
+/// 输出统计与"脱节清单"（error 不再触发 / fixed 编译失败的错误码），
+/// 用于发现官方错误码示例与当前工具链的偏差。
+///
+/// 完全复用 exec/workspace（隔离工作区）与 exec/toolchain（moon check），
+/// 每个项目在一次性子目录中复制并编译，不污染源目录。
+supported_targets = "native"
+
+import {
+  "Duckweed/moon-proof/exec/workspace" @workspace,
+  "Duckweed/moon-proof/exec/toolchain" @toolchain,
+  "Duckweed/moon-proof/platform/fs" @fs,
+  "Duckweed/moon-proof/platform/proc" @proc,
+  "moonbitlang/core/env" @env,
+}

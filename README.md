@@ -19,6 +19,7 @@ MoonProof 是一个 **库 + CLI**。MoonBit 工具链迭代快，文档里的示
 ```bash
 moon run --target native cmd/moonproof -- .
 moon run --target native cmd/moonproof -- ./docs --verbose   # 失败块附带具体编译错误，便于定位
+moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录>  # 官方错误码一致性验证
 ```
 
 > 注意：`cmd/moonproof` 是 native-only 的 CLI。**`moon run` 必须带 `--target native`**，否则 moon 默认选 wasm 后端会报 "does not support target backend 'wasm'"。
@@ -31,6 +32,19 @@ moon run --target native cmd/moonproof -- ./docs --verbose   # 失败块附带�
 fn greet(name : String) -> String {
   "hello, " + name
 }
+```
+
+## 错误码一致性验证
+
+MoonProof 还能验证 MoonBit 官方错误码示例。官方 `error_codes` 目录里，每个错误码有 `NNNN_error`（故意写错以触发该错误码）与 `NNNN_fixed`（修复版）两个独立小项目。`--errorcodes` 对每个项目真实 `moon check`，断言：
+
+- `NNNN_error` **必须编译失败**（触发该错误码）
+- `NNNN_fixed` **必须编译通过**
+
+输出逐码结果与"脱节清单"——即 `error` 不再触发、或 `fixed` 编译失败的错误码。它回答一个问题：**官方错误码示例与当前工具链还一致吗？** 工具链演进会让老错误码示例失效，这份清单可反馈给官方文档仓库修复，保持错误码文档与现实的同步。
+
+```bash
+moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录>
 ```
 
 ### 代码块标注
@@ -54,6 +68,7 @@ cmd/moonproof              CLI 入口：参数解析与分发（仅 native）
 features/                  应用层
   ├── scan                扫描目录、筛选 .md / .mbt
   ├── run                 编排：抽取 → 合成 → 执行 → 归因 → 报告
+  ├── errorcodes          官方错误码一致性验证（error 断言失败 / fixed 断言通过）
   └── report              结果数据结构与文本渲染
   │
 extract/                   抽取层（纯计算，全后端可移植）
@@ -88,7 +103,7 @@ platform/                  平台层（仅 native，含 C FFI）
 
 ## 测试与自举
 
-- 单元测试：`moon test --target native`（52 用例）
+- 单元测试：`moon test --target native`（57 用例）
 - 纯计算层可移植：`moon test --target wasm`（35 用例，同样覆盖 wasm-gc / js）
 - 端到端样例：`examples/sample.md` 覆盖 compile / run / no-check / should-fail 四种标注
 - **自举（dogfooding）**：CI 里用 MoonProof 自己验证本仓库 README 与示例文档，任一示例腐坏 → CI 红灯
@@ -115,7 +130,7 @@ MoonProof/
 ├── extract/              Markdown / 文档注释代码块抽取
 ├── synth/               代码块合成最小包
 ├── diagnose/            失败归因分类
-├── features/            scan / run / report
+├── features/            scan / run / errorcodes / report
 ├── exec/                隔离工作区 + 工具链执行
 ├── platform/            子进程 / 文件系统（C FFI）
 ├── examples/sample.md   端到端样例文档

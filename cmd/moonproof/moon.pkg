@@ -7,6 +7,7 @@ supported_targets = "native"
 import {
   "Duckweed/moon-proof/features/run" @run,
   "Duckweed/moon-proof/features/report" @report,
+  "Duckweed/moon-proof/features/errorcodes" @errorcodes,
   "Duckweed/moon-proof/platform/proc" @proc,
   "moonbitlang/core/env" @env,
 }
