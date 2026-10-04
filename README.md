@@ -108,8 +108,8 @@ platform/                  平台层（仅 native，含 C FFI）
 
 ## 测试与自举
 
-- 单元测试：`moon test --target native`（57 用例）
-- 纯计算层可移植：`moon test --target wasm`（35 用例，同样覆盖 wasm-gc / js）
+- 单元测试：`moon test --target native`（64 用例）
+- 纯计算层可移植：`moon test --target wasm`（38 用例，同样覆盖 wasm-gc / js）
 - 端到端样例：`examples/sample.md` 覆盖 compile / run / no-check / should-fail 四种标注
 - **自举（dogfooding）**：CI 里用 MoonProof 自己验证本仓库 README 与示例文档，任一示例腐坏 → CI 红灯
 
