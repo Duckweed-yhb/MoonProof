@@ -9,5 +9,6 @@ import {
   "Duckweed/moon-proof/features/report" @report,
   "Duckweed/moon-proof/features/errorcodes" @errorcodes,
   "Duckweed/moon-proof/platform/proc" @proc,
+  "Duckweed/moon-proof/platform/fs" @fs,
   "moonbitlang/core/env" @env,
 }

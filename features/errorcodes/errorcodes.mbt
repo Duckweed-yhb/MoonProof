@@ -279,6 +279,48 @@ pub fn summarize_ec(r : EcReport) -> String {
   r.fixed_passed.to_string() + ")"
 }
 
+///|
+/// 序列化为 JSON 清单（含逐码 detail），供 CI / 官方反馈 / 后续处理消费。
+pub fn to_json(r : EcReport) -> String {
+  let mut s = "{\"total\":" + r.total.to_string() + ",\"error_total\":" +
+    r.error_total.to_string() + ",\"fixed_total\":" + r.fixed_total.to_string() +
+    ",\"error_triggered\":" + r.error_triggered.to_string() + ",\"fixed_passed\":" +
+    r.fixed_passed.to_string() + ",\"results\":["
+  let mut first = true
+  for x in r.results {
+    if !first {
+      s = s + ","
+    }
+    first = false
+    s = s + "{\"code\":\"" + escape_json(x.code) + "\",\"kind\":\"" + escape_json(x.kind) +
+      "\",\"status\":\"" + escape_json(x.status) + "\",\"exit_code\":" +
+      x.exit_code.to_string() + ",\"detail\":\"" + escape_json(x.detail) + "\"}"
+  }
+  s + "]}"
+}
+
+///|
+/// JSON 字符串转义（引号、反斜杠、控制字符）。
+fn escape_json(s : String) -> String {
+  let mut out = ""
+  for c in s {
+    if c == '"' {
+      out = out + "\\\""
+    } else if c == '\\' {
+      out = out + "\\\\"
+    } else if c == '\n' {
+      out = out + "\\n"
+    } else if c == '\r' {
+      out = out + "\\r"
+    } else if c == '\t' {
+      out = out + "\\t"
+    } else {
+      out = out + c.to_string()
+    }
+  }
+  out
+}
+
 // ---------- 单元测试 ----------
 
 test "is_error_code_dir 识别 NNNN_error/fixed" {
@@ -324,4 +366,32 @@ test "scan_projects 只收集 NNNN_error/fixed 目录" {
   let projs = scan_projects(base)
   assert_eq(projs.length(), 2)
   ignore(@fs.rm_rf(base))
+}
+
+test "escape_json 转义引号反斜杠换行" {
+  assert_eq(escape_json("a\"b"), "a\\\"b")
+  assert_eq(escape_json("a\\b"), "a\\\\b")
+  assert_eq(escape_json("a\nb"), "a\\nb")
+  assert_eq(escape_json("plain"), "plain")
+}
+
+test "to_json 输出含统计与逐码字段" {
+  let r : EcReport = {
+    total: 2,
+    error_total: 1,
+    fixed_total: 1,
+    error_triggered: 0,
+    fixed_passed: 1,
+    results: [
+      { path: "/x/0001_error", code: "0001", kind: "error", status: "fail", exit_code: 0, detail: "warn" },
+      { path: "/x/0001_fixed", code: "0001", kind: "fixed", status: "pass", exit_code: 0, detail: "" },
+    ],
+  }
+  let j = to_json(r)
+  assert_true(j.has_prefix("{\"total\":2"))
+  assert_true(j.contains("\"error_triggered\":0"))
+  assert_true(j.contains("\"code\":\"0001\""))
+  assert_true(j.contains("\"kind\":\"error\""))
+  assert_true(j.contains("\"status\":\"fail\""))
+  assert_true(j.contains("\"detail\":\"warn\""))
 }

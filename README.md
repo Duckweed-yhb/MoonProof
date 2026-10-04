@@ -20,6 +20,7 @@ MoonProof 是一个 **库 + CLI**。MoonBit 工具链迭代快，文档里的示
 moon run --target native cmd/moonproof -- .
 moon run --target native cmd/moonproof -- ./docs --verbose   # 失败块附带具体编译错误，便于定位
 moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录>  # 官方错误码一致性验证
+moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录> --out report.json  # 同时导出 JSON 清单
 ```
 
 > 注意：`cmd/moonproof` 是 native-only 的 CLI。**`moon run` 必须带 `--target native`**，否则 moon 默认选 wasm 后端会报 "does not support target backend 'wasm'"。
@@ -42,6 +43,8 @@ MoonProof 还能验证 MoonBit 官方错误码示例。官方 `error_codes` 目�
 - `NNNN_fixed` **必须编译通过**
 
 输出逐码结果与"脱节清单"——即 `error` 不再触发、或 `fixed` 编译失败的错误码。它回答一个问题：**官方错误码示例与当前工具链还一致吗？** 工具链演进会让老错误码示例失效，这份清单可反馈给官方文档仓库修复，保持错误码文档与现实的同步。
+
+加 `--out <json 路径>` 可把完整结果（含逐码 `detail`）导出为 JSON 清单，供 CI 或后续处理消费。一份基于全量 286 个错误码（572 个示例项目）的真实验证报告见 [`docs/error-codes-report.md`](docs/error-codes-report.md)。
 
 ```bash
 moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录>
@@ -134,6 +137,7 @@ MoonProof/
 ├── exec/                隔离工作区 + 工具链执行
 ├── platform/            子进程 / 文件系统（C FFI）
 ├── examples/sample.md   端到端样例文档
+├── docs/                真实验证报告（error-codes-report.md）
 ├── .github/workflows/    CI
 ├── moon.mod
 └── README.md

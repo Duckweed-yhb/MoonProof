@@ -11,6 +11,7 @@ fn main {
   let mut timeout_ms = 60000
   let mut verbose = false
   let mut err_dir = ""
+  let mut out_path = ""
   let mut i = 1
   while i < argv.length() {
     let a = argv[i]
@@ -22,6 +23,9 @@ fn main {
       i = i + 1
     } else if a == "--errorcodes" && i + 1 < argv.length() {
       err_dir = argv[i + 1]
+      i = i + 2
+    } else if a == "--out" && i + 1 < argv.length() {
+      out_path = argv[i + 1]
       i = i + 2
     } else if a == "--help" || a == "-h" {
       print_usage()
@@ -35,7 +39,7 @@ fn main {
     }
   }
   if err_dir.length() > 0 {
-    run_errorcodes(err_dir, timeout_ms)
+    run_errorcodes(err_dir, timeout_ms, out_path)
   } else {
     run_docs(root, timeout_ms, verbose)
   }
@@ -73,11 +77,18 @@ fn run_docs(root : String, timeout_ms : Int, verbose : Bool) -> Unit {
 
 ///|
 /// 错误码一致性验证模式：验证官方 error_codes 根目录。
-fn run_errorcodes(dir : String, timeout_ms : Int) -> Unit {
+fn run_errorcodes(dir : String, timeout_ms : Int, out_path : String) -> Unit {
   let opts = @errorcodes.make_options(timeout_ms)
   match @errorcodes.verify_errorcodes(dir, opts) {
     Ok(report) => {
       println(@errorcodes.render_ec(report))
+      if out_path.length() > 0 {
+        if @fs.write_text(out_path, @errorcodes.to_json(report)) {
+          println("json written to " + out_path)
+        } else {
+          println("warning: failed to write " + out_path)
+        }
+      }
       if report.error_triggered == report.error_total && report.fixed_passed == report.fixed_total {
         @proc.exit_with(0)
       } else {
@@ -95,7 +106,7 @@ fn run_errorcodes(dir : String, timeout_ms : Int) -> Unit {
 fn print_usage() -> Unit {
   println("MoonProof — 验证 MoonBit 文档与教程里的代码示例")
   println("用法: moon run --target native cmd/moonproof -- [目录] [--timeout <毫秒>] [--verbose]")
-  println("错误码一致性验证: moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录> [--timeout <毫秒>]")
+  println("错误码一致性验证: moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录> [--timeout <毫秒>] [--out <json 路径>]")
 }
 
 ///|
