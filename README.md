@@ -95,6 +95,8 @@ platform/                  平台层（仅 native，含 C FFI）
 
 **分层纪律**：`extract/`、`synth/`、`diagnose/`、`features/report` 是纯计算，**不 import 任何 C FFI 包**，因此可在 `wasm` / `wasm-gc` / `js` / `native` 四后端编译与测试。边界用各 `moon.pkg` 的 `supported_targets` 声明、由工具链在构建期强制。执行与平台层只声明 `native`。
 
+**路径编码限制**：`platform/fs` 与 `platform/proc` 在 **Windows 上完整支持非 ASCII（含中文）路径**（宽字符 API）；非 Windows 平台（Linux/macOS）路径按 ASCII 处理、非 ASCII 字符会被替换为 `?`——因此含中文路径的仓库在非 Windows 上不可复现（v1 限制）。
+
 **失败归因**：编译失败被归因为可行动的类别，帮助文档作者判断"例子为什么失效"：
 - `compile-error`：语法 / 类型等普通编译错误
 - `api-changed`：用了不存在的 API（更可能是工具链演进导致的 API 变更）

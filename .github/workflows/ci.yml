@@ -46,4 +46,4 @@ jobs:
       # 自举（dogfooding）：用 MoonProof 自己验证仓库里的文档代码块
       # （examples/sample.md + README 的快速开始示例）。任一示例腐坏 → CI 红灯。
       - name: Dogfood - verify own docs
-        run: moon run cmd/moonproof --target native -- .
+        run: moon run --target native cmd/moonproof -- .
