@@ -139,7 +139,7 @@ MoonProof/
 ├── exec/                隔离工作区 + 工具链执行
 ├── platform/            子进程 / 文件系统（C FFI）
 ├── examples/sample.md   端到端样例文档
-├── docs/                真实验证报告（error-codes-report.md）
+├── docs/                真实验证报告（error-codes-report / tutorial-audit-report）
 ├── .github/workflows/    CI
 ├── moon.mod
 └── README.md
