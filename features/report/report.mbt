@@ -125,6 +125,54 @@ pub fn summarize(r : DocReport) -> String {
   r.failed.to_string() + " skip=" + r.skipped.to_string()
 }
 
+///|
+/// 把文档报告渲染为 JSON 字符串（供 CI / 后续处理消费）。
+pub fn to_json(r : DocReport) -> String {
+  let mut s = "{\"path\": " + json_str(r.path)
+  s = s + ", \"total\": " + r.total.to_string()
+  s = s + ", \"passed\": " + r.passed.to_string()
+  s = s + ", \"failed\": " + r.failed.to_string()
+  s = s + ", \"skipped\": " + r.skipped.to_string()
+  s = s + ", \"blocks\": ["
+  let mut first = true
+  for b in r.blocks {
+    if first {
+      first = false
+    } else {
+      s = s + ", "
+    }
+    s = s + block_to_json(b)
+  }
+  s = s + "]}"
+  s
+}
+
+///|
+/// 单个块结果转 JSON。
+fn block_to_json(b : BlockResult) -> String {
+  "{\"path\": " + json_str(b.path) + ", \"start_line\": " + b.start_line.to_string() +
+  ", \"kind\": " + json_str(b.kind) + ", \"status\": " + json_str(b.status) +
+  ", \"verdict\": " + json_str(b.verdict) + ", \"detail\": " + json_str(b.detail) +
+  ", \"suggestion\": " + json_str(b.suggestion) + "}"
+}
+
+///|
+/// JSON 字符串转义（引号 / 反斜杠 / 控制字符）。
+fn json_str(s : String) -> String {
+  let mut out = "\""
+  for c in s {
+    match c {
+      '"' => out = out + "\\\""
+      '\\' => out = out + "\\\\"
+      '\n' => out = out + "\\n"
+      '\r' => out = out + "\\r"
+      '\t' => out = out + "\\t"
+      _ => out = out + c.to_string()
+    }
+  }
+  out + "\""
+}
+
 // ---------- 测试 ----------
 
 test "空文档汇总为零" {
@@ -173,4 +221,24 @@ test "无建议的失败块 verbose 也不输出建议行" {
   let b1 = make_block_result("a.md", 5, "compile", "fail", "", "write failed", "")
   let r = make_report("a.md", [b1])
   assert_false(render_text_verbose(r).contains("→ 建议："))
+}
+
+test "to_json 输出合法 JSON 结构" {
+  let b1 = make_block_result("a.md", 3, "compile", "pass", "", "", "")
+  let b2 = make_block_result("a.md", 10, "compile", "fail", "api-changed", "has no method", "查 API")
+  let r = make_report("a.md", [b1, b2])
+  let j = to_json(r)
+  assert_true(j.contains("\"path\": \"a.md\""))
+  assert_true(j.contains("\"total\": 2"))
+  assert_true(j.contains("\"failed\": 1"))
+  assert_true(j.contains("\"start_line\": 10"))
+  assert_true(j.contains("\"verdict\": \"api-changed\""))
+  assert_true(j.contains("\"suggestion\": \"查 API\""))
+}
+
+test "to_json 转义引号与换行" {
+  let b1 = make_block_result("a.md", 5, "compile", "fail", "", "say \"hi\"\nnext", "")
+  let j = to_json(make_report("a.md", [b1]))
+  assert_true(j.contains("\\\""))
+  assert_true(j.contains("\\n"))
 }

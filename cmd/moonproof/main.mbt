@@ -76,13 +76,14 @@ fn main {
       @proc.exit_with(2)
     }
     "errorcodes" => run_errorcodes(args.err_dir, args.timeout_ms, args.out_path)
-    _ => run_docs(args.root, args.timeout_ms, args.verbose)
+    _ => run_docs(args.root, args.timeout_ms, args.verbose, args.out_path)
   }
 }
 
 ///|
 /// 文档验证模式：扫描目录下 .md 里的 moonbit 代码块并验证。
-fn run_docs(root : String, timeout_ms : Int, verbose : Bool) -> Unit {
+/// out_path 非空时，把全部文档报告导出为 JSON 数组。
+fn run_docs(root : String, timeout_ms : Int, verbose : Bool, out_path : String) -> Unit {
   let opts = @run.make_options(timeout_ms)
   match @run.run_docs(root, opts) {
     Ok(reports) => {
@@ -97,6 +98,13 @@ fn run_docs(root : String, timeout_ms : Int, verbose : Bool) -> Unit {
           any_fail = true
         }
       }
+      if out_path.length() > 0 {
+        if @fs.write_text(out_path, reports_to_json(reports)) {
+          println("json written to " + out_path)
+        } else {
+          println("warning: failed to write " + out_path)
+        }
+      }
       if any_fail {
         @proc.exit_with(1)
       } else {
@@ -108,6 +116,22 @@ fn run_docs(root : String, timeout_ms : Int, verbose : Bool) -> Unit {
       @proc.exit_with(2)
     }
   }
+}
+
+///|
+/// 把多份文档报告渲染为 JSON 数组字符串。
+fn reports_to_json(reports : Array[@report.DocReport]) -> String {
+  let mut s = "["
+  let mut first = true
+  for r in reports {
+    if first {
+      first = false
+    } else {
+      s = s + ", "
+    }
+    s = s + @report.to_json(r)
+  }
+  s + "]"
 }
 
 ///|
