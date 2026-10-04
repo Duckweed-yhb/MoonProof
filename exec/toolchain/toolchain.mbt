@@ -39,6 +39,13 @@ pub fn moon_run(module_dir : String, timeout_ms : Int, target : String) -> Resul
 }
 
 ///|
+/// 在 module_dir 中执行 `moon add <dep>`（注入第三方依赖，供文档示例 import）。
+/// 依赖名形如 "owner/name"，由工具链解析版本并写入 moon.mod。
+pub fn moon_add(module_dir : String, dep : String, timeout_ms : Int) -> Result[ToolOutput, String] {
+  run_tool("add " + dep, module_dir, "", timeout_ms)
+}
+
+///|
 /// 通用工具链执行。失败（无法创建进程等）返回 Err；命令本身非零退出码不算失败。
 fn run_tool(
   sub : String,

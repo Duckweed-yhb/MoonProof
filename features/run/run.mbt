@@ -16,24 +16,32 @@ pub struct RunOptions {
   timeout_ms : Int
   /// 验证文档代码块用的后端（传给 moon check/test `--target`）；空串表示不指定
   target : String
+  /// 额外注入的第三方依赖（形如 "owner/name"，编译前 moon add）
+  deps : Array[String]
 }
 
 ///|
 /// 默认选项：单块编译超时 60s。
 pub fn default_options() -> RunOptions {
-  { timeout_ms: 60000, target: "" }
+  { timeout_ms: 60000, target: "", deps: [] }
 }
 
 ///|
 /// 显式指定超时构造选项（跨包用）。
 pub fn make_options(timeout_ms : Int) -> RunOptions {
-  { timeout_ms: timeout_ms, target: "" }
+  { timeout_ms: timeout_ms, target: "", deps: [] }
 }
 
 ///|
 /// 显式指定超时与后端构造选项（跨包用）。
 pub fn make_options_with_target(timeout_ms : Int, target : String) -> RunOptions {
-  { timeout_ms, target }
+  { timeout_ms, target, deps: [] }
+}
+
+///|
+/// 显式指定超时、后端与注入依赖构造选项（跨包用）。
+pub fn make_options_with_deps(timeout_ms : Int, target : String, deps : Array[String]) -> RunOptions {
+  { timeout_ms, target, deps }
 }
 
 ///|
@@ -51,7 +59,9 @@ pub fn run_docs(root : String, opts : RunOptions) -> Result[Array[@report.DocRep
     let res = @markdown.extract(text, p)
     let blocks : Array[@report.BlockResult] = []
     for b in res.blocks {
-      blocks.push(verify_block(ws, b, p, counter, opts.timeout_ms, opts.target))
+      blocks.push(
+        verify_block(ws, b, p, counter, opts.timeout_ms, opts.target, opts.deps),
+      )
       counter = counter + 1
     }
     reports.push(@report.make_report(p, blocks))
@@ -68,7 +78,8 @@ fn verify_block(
   doc_path : String,
   index : Int,
   timeout_ms : Int,
-  target : String
+  target : String,
+  deps : Array[String]
 ) -> @report.BlockResult {
   let kind = block.kind.name()
   let start = block.start_line
@@ -84,6 +95,11 @@ fn verify_block(
     if !write_file(dir, f.path, f.content) {
       return @report.make_block_result(doc_path, start, kind, "fail", "", "write failed: " + f.path, "")
     }
+  }
+  // 注入第三方依赖：对每个 --dep 在块目录执行 moon add，使文档示例的 import 可用。
+  // 网络不可用 / 依赖不存在时 moon add 失败，后续编译会如实归因。
+  for d in deps {
+    ignore(@toolchain.moon_add(dir, d, timeout_ms))
   }
   let out = if kind == "run" {
     @toolchain.moon_run(dir, timeout_ms, target)

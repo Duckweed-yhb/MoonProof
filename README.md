@@ -30,6 +30,7 @@ moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录>  
 moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录> --out report.json  # 同时导出 JSON 清单
 moon run --target native cmd/moonproof -- . --out report.json   # 文档验证结果导出 JSON
 moon run --target native cmd/moonproof -- . --target wasm        # 指定验证后端（wasm/js/native）
+moon run --target native cmd/moonproof -- ./some-lib --dep moonbitlang/async  # 注入第三方依赖，供示例 import
 ```
 
 > 注意：`cmd/moonproof` 是 native-only 的 CLI。**`moon run` 必须带 `--target native`**，否则 moon 默认选 wasm 后端会报 "does not support target backend 'wasm'"。

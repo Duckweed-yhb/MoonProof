@@ -20,6 +20,8 @@ pub struct ParsedArgs {
   out_path : String
   /// --target 的验证后端（wasm / js / native；空串表示不指定）
   target : String
+  /// --dep 注入的第三方依赖（可重复，形如 "owner/name"）
+  deps : Array[String]
   /// 解析结果动作：docs / errorcodes / help / error
   action : String
   /// action == "error" 时的提示
@@ -36,6 +38,7 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
   let mut err_dir = ""
   let mut out_path = ""
   let mut target = ""
+  let deps : Array[String] = []
   let mut i = 1
   while i < argv.length() {
     let a = argv[i]
@@ -54,6 +57,9 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
     } else if a == "--target" && i + 1 < argv.length() {
       target = argv[i + 1]
       i = i + 2
+    } else if a == "--dep" && i + 1 < argv.length() {
+      deps.push(argv[i + 1])
+      i = i + 2
     } else if a == "--help" || a == "-h" {
       return {
         root,
@@ -62,6 +68,7 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
         err_dir,
         out_path,
         target,
+        deps,
         action: "help",
         error: "",
       }
@@ -73,6 +80,7 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
         err_dir,
         out_path,
         target,
+        deps,
         action: "error",
         error: "unknown option: " + a,
       }
@@ -82,9 +90,9 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
     }
   }
   if err_dir.length() > 0 {
-    { root, timeout_ms, verbose, err_dir, out_path, target, action: "errorcodes", error: "" }
+    { root, timeout_ms, verbose, err_dir, out_path, target, deps, action: "errorcodes", error: "" }
   } else {
-    { root, timeout_ms, verbose, err_dir, out_path, target, action: "docs", error: "" }
+    { root, timeout_ms, verbose, err_dir, out_path, target, deps, action: "docs", error: "" }
   }
 }
 
@@ -100,7 +108,14 @@ fn main {
       @proc.exit_with(2)
     }
     "errorcodes" => run_errorcodes(args.err_dir, args.timeout_ms, args.out_path)
-    _ => run_docs(args.root, args.timeout_ms, args.verbose, args.out_path, args.target)
+    _ => run_docs(
+      args.root,
+      args.timeout_ms,
+      args.verbose,
+      args.out_path,
+      args.target,
+      args.deps,
+    )
   }
 }
 
@@ -108,14 +123,16 @@ fn main {
 /// 文档验证模式：扫描目录下 .md 里的 moonbit 代码块并验证。
 /// out_path 非空时，把全部文档报告导出为 JSON 数组。
 /// target 非空时用 `--target <t>` 指定验证后端。
+/// deps 非空时对每个依赖执行 `moon add` 注入，供示例 import。
 fn run_docs(
   root : String,
   timeout_ms : Int,
   verbose : Bool,
   out_path : String,
-  target : String
+  target : String,
+  deps : Array[String]
 ) -> Unit {
-  let opts = @run.make_options_with_target(timeout_ms, target)
+  let opts = @run.make_options_with_deps(timeout_ms, target, deps)
   match @run.run_docs(root, opts) {
     Ok(reports) => {
       let mut any_fail = false
@@ -278,6 +295,25 @@ test "--target 与目录混用" {
   let a = parse_args(["moonproof", "./docs", "--target", "js"])
   assert_eq(a.root, "./docs")
   assert_eq(a.target, "js")
+}
+
+test "--dep 收集单个依赖" {
+  let a = parse_args(["moonproof", "--dep", "oboard/eval"])
+  assert_eq(a.deps.length(), 1)
+  assert_eq(a.deps[0], "oboard/eval")
+}
+
+test "--dep 可重复收集多个依赖" {
+  let a = parse_args(["moonproof", "--dep", "moonbitlang/async", "--dep", "oboard/eval"])
+  assert_eq(a.deps.length(), 2)
+  assert_eq(a.deps[0], "moonbitlang/async")
+  assert_eq(a.deps[1], "oboard/eval")
+}
+
+test "--dep 与目录混用" {
+  let a = parse_args(["moonproof", "./docs", "--dep", "owner/lib"])
+  assert_eq(a.root, "./docs")
+  assert_eq(a.deps[0], "owner/lib")
 }
 
 test "parse_int 解析与非法回退" {
