@@ -5,8 +5,29 @@
 ///   目录默认当前目录；验证其中所有 .md 文档里的 moonbit 代码块。
 ///   退出码：0 = 全部通过；1 = 有失败；2 = 运行错误。
 /// 错误码验证：moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录>
-fn main {
-  let argv = @env.args()
+///|
+/// 解析后的命令行参数（纯数据，便于单元测试）。
+pub struct ParsedArgs {
+  /// 目标目录（默认 ".")
+  root : String
+  /// 单块编译超时（毫秒，默认 60000）
+  timeout_ms : Int
+  /// 是否 --verbose / -v
+  verbose : Bool
+  /// --errorcodes 的根目录（非空即错误码验证模式）
+  err_dir : String
+  /// --out 的 JSON 输出路径（仅错误码模式）
+  out_path : String
+  /// 解析结果动作：docs / errorcodes / help / error
+  action : String
+  /// action == "error" 时的提示
+  error : String
+}
+
+///|
+/// 解析命令行参数（argv[0] 为程序名，从 argv[1] 开始）。纯函数，不触发任何
+/// 副作用（不打印、不退出），由 main 依据 action 分发。可被单元测试覆盖。
+fn parse_args(argv : Array[String]) -> ParsedArgs {
   let mut root = "."
   let mut timeout_ms = 60000
   let mut verbose = false
@@ -28,20 +49,34 @@ fn main {
       out_path = argv[i + 1]
       i = i + 2
     } else if a == "--help" || a == "-h" {
-      print_usage()
-      @proc.exit_with(0)
+      return { root, timeout_ms, verbose, err_dir, out_path, action: "help", error: "" }
     } else if a.has_prefix("--") {
-      println("unknown option: " + a)
-      @proc.exit_with(2)
+      return { root, timeout_ms, verbose, err_dir, out_path, action: "error", error: "unknown option: " + a }
     } else {
       root = a
       i = i + 1
     }
   }
   if err_dir.length() > 0 {
-    run_errorcodes(err_dir, timeout_ms, out_path)
+    { root, timeout_ms, verbose, err_dir, out_path, action: "errorcodes", error: "" }
   } else {
-    run_docs(root, timeout_ms, verbose)
+    { root, timeout_ms, verbose, err_dir, out_path, action: "docs", error: "" }
+  }
+}
+
+fn main {
+  let args = parse_args(@env.args())
+  match args.action {
+    "help" => {
+      print_usage()
+      @proc.exit_with(0)
+    }
+    "error" => {
+      println(args.error)
+      @proc.exit_with(2)
+    }
+    "errorcodes" => run_errorcodes(args.err_dir, args.timeout_ms, args.out_path)
+    _ => run_docs(args.root, args.timeout_ms, args.verbose)
   }
 }
 
@@ -121,4 +156,67 @@ fn parse_int(s : String) -> Int {
     }
   }
   n
+}
+
+// ---------- 单元测试 ----------
+
+test "默认参数：当前目录 + docs 动作 + 默认超时" {
+  let a = parse_args(["moonproof"])
+  assert_eq(a.action, "docs")
+  assert_eq(a.root, ".")
+  assert_eq(a.timeout_ms, 60000)
+  assert_false(a.verbose)
+}
+
+test "--help 返回 help 动作" {
+  let a = parse_args(["moonproof", "--help"])
+  assert_eq(a.action, "help")
+}
+
+test "-v 开启 verbose" {
+  let a = parse_args(["moonproof", "-v"])
+  assert_true(a.verbose)
+}
+
+test "--errorcodes 设置目录并切到 errorcodes 动作" {
+  let a = parse_args(["moonproof", "--errorcodes", "some/root"])
+  assert_eq(a.action, "errorcodes")
+  assert_eq(a.err_dir, "some/root")
+}
+
+test "--out 设置 json 输出路径（不改变动作）" {
+  let a = parse_args(["moonproof", "--errorcodes", "d", "--out", "report.json"])
+  assert_eq(a.action, "errorcodes")
+  assert_eq(a.out_path, "report.json")
+}
+
+test "--timeout 解析数字" {
+  let a = parse_args(["moonproof", "--timeout", "90000"])
+  assert_eq(a.timeout_ms, 90000)
+}
+
+test "未知选项返回 error 动作并提示" {
+  let a = parse_args(["moonproof", "--bogus"])
+  assert_eq(a.action, "error")
+  assert_true(a.error.contains("bogus"))
+}
+
+test "首个非选项参数作为目录" {
+  let a = parse_args(["moonproof", "./docs"])
+  assert_eq(a.root, "./docs")
+}
+
+test "目录与 --verbose 可混用" {
+  let a = parse_args(["moonproof", "./docs", "--verbose"])
+  assert_eq(a.root, "./docs")
+  assert_true(a.verbose)
+  assert_eq(a.action, "docs")
+}
+
+test "parse_int 解析与非法回退" {
+  assert_eq(parse_int("123"), 123)
+  assert_eq(parse_int("0"), 0)
+  assert_eq(parse_int(""), 0)
+  assert_eq(parse_int("abc"), 0)
+  assert_eq(parse_int("45x"), 45)
 }

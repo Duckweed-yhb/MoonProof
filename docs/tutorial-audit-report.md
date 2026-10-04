@@ -58,9 +58,9 @@ CLI 快速开始（`cli-quickstart.md`，1 个代码块）逐块做**真实 `moo
 
 **1. 片段性示例缺显式标注（占多数）**
 
-例如第 56 块：
+例如第 56 块（此处为引用示意，故标注 `no-check`；原文是文档中的普通 moonbit 块）：
 
-```moonbit
+```moonbit no-check
 Enumeration::Variant(random_variable).do_something()
 impl[T : Trait] for Structure[T] with some_method(self, other) { ... }
 ```
