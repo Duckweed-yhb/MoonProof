@@ -11,4 +11,6 @@ supported_targets = "native"
 
 import {
   "Duckweed/moon-proof/platform/proc" @proc,
+  "Duckweed/moon-proof/platform/fs" @fs,
+  "moonbitlang/core/env" @env,
 }
