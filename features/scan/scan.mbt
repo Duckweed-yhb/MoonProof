@@ -32,7 +32,12 @@ fn scan_ext(root : String, ext : String) -> Array[String] {
 
 ///|
 /// 是否应排除（构建产物/版本控制目录）。
+///
+/// 注意分隔符：Windows 路径用 `\`，Linux/macOS 用 `/`，因此 target
+/// 目录的两种写法都匹配（`_build` / `.git` / `node_modules` 是子串匹配，
+/// 不受分隔符影响）。
 fn not_build(path : String) -> Bool {
-  !path.contains("_build") && !path.contains("/target/") && !path.contains(".git") &&
+  !path.contains("_build") && !path.contains("/target/") &&
+  !path.contains("\\target\\") && !path.contains(".git") &&
   !path.contains("node_modules")
 }

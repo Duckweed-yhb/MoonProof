@@ -40,7 +40,8 @@ pub fn synth_block(block : @markdown.CodeBlock, index : Int, doc_path : String) 
   let is_run = block.kind.name() == "run"
   // 含顶层 fn main 的块也须用可执行包：`fn main` 在库包（moon.pkg 空）中不合法，
   // 否则会导致对本身正确的代码块误报 compile-error。
-  let has_main = block.code.contains("fn main")
+  // 用行首匹配而非子串 contains，避免代码里字符串/注释含 "fn main" 造成误判。
+  let has_main = has_top_level_main(block.code)
   let moon_mod = "name = \"Duckweed/\{name}\"\nversion = \"0.1.0\"\ndescription = \"MoonProof synthesized block\"\n"
   // 可运行块或含 fn main 的块用 pkgtype(kind:"executable") 标记 main 入口（本工具链版本不用 is_main）。
   let moon_pkg = if is_run || has_main {
@@ -61,6 +62,18 @@ pub fn synth_block(block : @markdown.CodeBlock, index : Int, doc_path : String) 
     line_map.push(block.start_line + i + 1)
   }
   { name, is_run, files, line_map, doc_path }
+}
+
+///|
+/// 是否含顶层 `fn main`（行首，忽略前导空白）。
+fn has_top_level_main(code : String) -> Bool {
+  for line in code.split("\n") {
+    let t = line.trim().to_owned()
+    if t.has_prefix("fn main") {
+      return true
+    }
+  }
+  false
 }
 
 ///|
@@ -122,4 +135,23 @@ test "doc_path 被透传" {
   let b = @markdown.make_block(1, 2, "x", @markdown.compile_kind())
   let r = synth_block(b, 0, "docs/tutorial.md")
   assert_eq(r.doc_path, "docs/tutorial.md")
+}
+
+test "字符串里的 fn main 不触发可执行包" {
+  let b = @markdown.make_block(1, 2, "println(\"fn main\")", @markdown.compile_kind())
+  let r = synth_block(b, 0, "x.md")
+  // 库包（空内容），不因子串误判为 executable
+  assert_eq(r.files[1].content, "")
+}
+
+test "顶层 fn main 触发可执行包" {
+  let b = @markdown.make_block(1, 2, "fn main() { }", @markdown.compile_kind())
+  let r = synth_block(b, 0, "x.md")
+  assert_eq(r.files[1].content, "pkgtype(kind: \"executable\")\n")
+}
+
+test "带缩进的 fn main 也被识别" {
+  let b = @markdown.make_block(1, 2, "  fn main() { }", @markdown.compile_kind())
+  let r = synth_block(b, 0, "x.md")
+  assert_eq(r.files[1].content, "pkgtype(kind: \"executable\")\n")
 }
