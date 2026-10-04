@@ -15,6 +15,9 @@
  *   5. Windows 上统一用宽字符（wchar_t/UTF-16）路径 API，
  *      支持含中文等非 ASCII 字符的路径（如 Windows 中文用户名目录）。
  *      MoonBit 的 String 内存即 UTF-16（uint16_t[]），可逐单元拷贝。
+ *   6. 非 Windows 分支路径按 ASCII 处理，非 ASCII 字符替换为 '?'：
+ *      Linux/macOS 上含中文等非 ASCII 路径不可用（v1 限制，Windows 完整支持）。
+ *      如需支持，应改用 UTF-8 字节串传给 POSIX API（未来工作）。
  * ============================================================ */
 
 #include "moonbit.h"
@@ -210,13 +213,17 @@ static int32_t mkdir_all_c(char *p) {
   return 0;
 }
 
-/* 非 Windows：递归删除。不跟随符号链接。 */
+/* 非 Windows：递归删除。用 lstat 判断类型：符号链接只删除链接本身，
+   绝不递归进入链接目标（防止删除逃出工作区）。 */
 static int32_t fs_rm_rf_c(const char *p) {
-  int32_t kind = fs_kind_c(p);
-  if (kind == FS_NONE) {
+  struct stat lst;
+  if (lstat(p, &lst) != 0) {
     return 0;
   }
-  if (kind != FS_DIR) {
+  if (S_ISLNK(lst.st_mode)) {
+    return (remove(p) == 0) ? 0 : -1;
+  }
+  if (!S_ISDIR(lst.st_mode)) {
     return (remove(p) == 0) ? 0 : -1;
   }
   DIR *d = opendir(p);
@@ -337,6 +344,11 @@ static int32_t fs_rm_rf_w(const wchar_t *p) {
       }
       wchar_t child[FS_MAX_PATH + 8];
       fs_join_w(child, (int32_t)(sizeof(child) / sizeof(wchar_t)), p, fd.cFileName);
+      if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+        /* 符号链接 / junction：只删链接本身，不递归目标目录 */
+        RMDIR_W(child);
+        continue;
+      }
       fs_rm_rf_w(child);
     } while (FindNextFileW(h, &fd));
     FindClose(h);
@@ -882,9 +894,23 @@ static moonbit_string_t fs_list_files_w(const wchar_t *root, const wchar_t *want
         fs_join_w(child, (int32_t)(sizeof(child) / sizeof(wchar_t)), cur, fd.cFileName);
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
           if (stack_top >= stack_cap) {
-            stack_cap *= 2;
-            stack = (wchar_t **)realloc(stack, sizeof(wchar_t *) * (size_t)stack_cap);
-            depths = (int32_t *)realloc(depths, sizeof(int32_t) * (size_t)stack_cap);
+            int32_t nc = stack_cap * 2;
+            wchar_t **ns = (wchar_t **)realloc(stack, sizeof(wchar_t *) * (size_t)nc);
+            int32_t *nd = (int32_t *)realloc(depths, sizeof(int32_t) * (size_t)nc);
+            if (ns == NULL && nd == NULL) {
+              continue;
+            }
+            if (ns == NULL) {
+              free(nd);
+              continue;
+            }
+            if (nd == NULL) {
+              free(ns);
+              continue;
+            }
+            stack = ns;
+            depths = nd;
+            stack_cap = nc;
           }
           stack[stack_top] = _wcsdup(child);
           depths[stack_top] = cur_depth + 1;
@@ -982,9 +1008,23 @@ moonbit_string_t fs_list_files(moonbit_string_t path, moonbit_string_t ext,
         }
         if (S_ISDIR(st.st_mode)) {
           if (stack_top >= stack_cap) {
-            stack_cap *= 2;
-            stack = (char **)realloc(stack, sizeof(char *) * (size_t)stack_cap);
-            depths = (int32_t *)realloc(depths, sizeof(int32_t) * (size_t)stack_cap);
+            int32_t nc = stack_cap * 2;
+            char **ns = (char **)realloc(stack, sizeof(char *) * (size_t)nc);
+            int32_t *nd = (int32_t *)realloc(depths, sizeof(int32_t) * (size_t)nc);
+            if (ns == NULL && nd == NULL) {
+              continue;
+            }
+            if (ns == NULL) {
+              free(nd);
+              continue;
+            }
+            if (nd == NULL) {
+              free(ns);
+              continue;
+            }
+            stack = ns;
+            depths = nd;
+            stack_cap = nc;
           }
           stack[stack_top] = strdup(child);
           depths[stack_top] = cur_depth + 1;
