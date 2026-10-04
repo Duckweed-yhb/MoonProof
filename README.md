@@ -28,6 +28,8 @@ moon run --target native cmd/moonproof -- .
 moon run --target native cmd/moonproof -- ./docs --verbose   # 失败块附带具体编译错误，便于定位
 moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录>  # 官方错误码一致性验证
 moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录> --out report.json  # 同时导出 JSON 清单
+moon run --target native cmd/moonproof -- . --out report.json   # 文档验证结果导出 JSON
+moon run --target native cmd/moonproof -- . --target wasm        # 指定验证后端（wasm/js/native）
 ```
 
 > 注意：`cmd/moonproof` 是 native-only 的 CLI。**`moon run` 必须带 `--target native`**，否则 moon 默认选 wasm 后端会报 "does not support target backend 'wasm'"。
@@ -115,7 +117,7 @@ platform/                  平台层（仅 native，含 C FFI）
 
 ## 测试与自举
 
-- 单元测试：`moon test --target native`（64 用例）
+- 单元测试：`moon test --target native`（84 用例）
 - 纯计算层可移植：`moon test --target wasm`（38 用例，同样覆盖 wasm-gc / js）
 - 端到端样例：`examples/sample.md` 覆盖 compile / run / no-check / should-fail 四种标注
 - **自举（dogfooding）**：CI 里用 MoonProof 自己验证本仓库 README 与示例文档，任一示例腐坏 → CI 红灯
