@@ -47,3 +47,17 @@ jobs:
       # （examples/sample.md + README 的快速开始示例）。任一示例腐坏 → CI 红灯。
       - name: Dogfood - verify own docs
         run: moon run --target native cmd/moonproof -- .
+
+  # cram CLI 冒烟：官方推荐 CLI 集成测试（scrut 引擎）。
+  # 仅在 Linux 运行——Windows 上 scrut 走 Git Bash，PATH 注入与 UTF-16
+  # 输出编码存在平台限制（moon cram 在 Windows 尚不成熟）。
+  cram:
+    name: cram CLI smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup MoonBit
+        uses: hustcer/setup-moonbit@v1
+      - name: Cram CLI smoke
+        run: moon cram test cram
