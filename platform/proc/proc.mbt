@@ -31,6 +31,8 @@ pub suberror ProcError {
   OutOfMemory
   /// stderr 重定向文件不可写
   StderrCaptureFailed(Int)
+  /// 执行超时（elapsed_ms 超过 timeout_ms；timeout_ms <= 0 时不会触发）
+  Timeout(Int)
 }
 // ---------- C FFI 声明 ----------
 
@@ -176,12 +178,17 @@ pub fn run(cmd : String, workdir : String, timeout_ms : Int) -> Result[Output, P
   match map_error_code(code) {
     Some(err) => Err(err)
     None =>
-      Ok({
-        exit_code: code,
-        stdout,
-        stderr,
-        elapsed_ms: proc_last_elapsed_ms_raw(),
-      })
+      {
+        let elapsed = proc_last_elapsed_ms_raw()
+        // 超时判定：命令结束后按实际耗时判断（timeout_ms <= 0 表示不限制）。
+        // v2 的进程级强杀（WaitForSingleObject + TerminateProcess）未实现，
+        // 但至少在此兑现"超时即失败"的语义，避免调用方无限等待后无感知。
+        if timeout_ms > 0 && elapsed.to_int() > timeout_ms {
+          Err(Timeout(timeout_ms))
+        } else {
+          Ok({ exit_code: code, stdout, stderr, elapsed_ms: elapsed })
+        }
+      }
   }
 }
 
@@ -210,5 +217,34 @@ pub fn error_message(e : ProcError) -> String {
     SpawnFailed => "failed to spawn process"
     OutOfMemory => "out of memory"
     StderrCaptureFailed(_) => "failed to capture stderr"
+    Timeout(ms) => "command timed out after " + ms.to_string() + " ms"
+  }
+}
+
+// ---------- 单元测试 ----------
+
+/// 一个明显慢于 1ms 的命令，用于验证超时判定（跨平台）。
+#cfg(platform="windows")
+fn slow_cmd() -> String {
+  "cmd /c ping -n 2 127.0.0.1 >nul"
+}
+
+#cfg(not(platform="windows"))
+fn slow_cmd() -> String {
+  "sleep 1"
+}
+
+test "耗时超过 timeout_ms 返回 Timeout" {
+  match run(slow_cmd(), "", 1) {
+    Err(Timeout(_)) => assert_true(true)
+    Err(_) => fail("应报 Timeout")
+    Ok(_) => fail("命令未超时却返回成功")
+  }
+}
+
+test "timeout_ms <= 0 表示不限制" {
+  match run(slow_cmd(), "", 0) {
+    Err(Timeout(_)) => fail("timeout<=0 不应报超时")
+    _ => assert_true(true)
   }
 }
