@@ -118,12 +118,18 @@ platform/                  平台层（仅 native，含 C FFI）
 
 ## 测试与自举
 
-- 单元测试：`moon test --target native`（84 用例）
-- 纯计算层可移植：`moon test --target wasm`（38 用例，同样覆盖 wasm-gc / js）
+- 单元测试：`moon test --target native`（87 用例）
+- 纯计算层可移植：`moon test --target wasm`（46 用例，同样覆盖 wasm-gc / js）
 - 端到端样例：`examples/sample.md` 覆盖 compile / run / no-check / should-fail 四种标注
 - **自举（dogfooding）**：CI 里用 MoonProof 自己验证本仓库 README 与示例文档，任一示例腐坏 → CI 红灯
 
 CI（`.github/workflows/ci.yml`）在 Linux / Windows 双平台跑：build + test（native）、纯计算层 wasm/wasm-gc/js 可移植测试、自举验证。
+
+---
+
+## AI 使用说明
+
+本项目开发过程中使用 AI 编程工具辅助生成代码、补全测试与撰写部分文档。项目的目标定位、技术路径、工程质量与开源合规均由作者本人掌控并负责：AI 生成的代码均经作者审阅、集成测试与 dogfooding 验证后合入；项目申报书由作者人工撰写。
 
 ---
 
