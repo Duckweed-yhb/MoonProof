@@ -212,7 +212,13 @@ fn run_errorcodes(dir : String, timeout_ms : Int, out_path : String) -> Unit {
 ///|
 fn print_usage() -> Unit {
   println("MoonProof — 验证 MoonBit 文档与教程里的代码示例")
-  println("用法: moon run --target native cmd/moonproof -- [目录] [--timeout <毫秒>] [--verbose]")
+  println("用法: moon run --target native cmd/moonproof -- [目录] [选项]")
+  println("  目录        待验证的 .md/.mbt 目录（默认 .）")
+  println("  --timeout   单块编译超时（毫秒，默认 60000）")
+  println("  --verbose   失败块附带具体编译错误")
+  println("  --target    指定验证后端（wasm/js/native）")
+  println("  --dep       注入第三方依赖（可重复，形如 owner/name，编译前 moon add）")
+  println("  --out       导出 JSON 报告")
   println("错误码一致性验证: moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录> [--timeout <毫秒>] [--out <json 路径>]")
 }
 
