@@ -30,11 +30,11 @@ pub suberror WorkspaceError {
 
 ///|
 /// 默认工作区根目录名（放在系统临时目录下）
-const WORKSPACE_PREFIX : String = "moonhive-workspaces"
+const WORKSPACE_PREFIX : String = "moonproof-workspaces"
 
 ///|
 /// 默认运行标识前缀
-const RUN_PREFIX : String = "moonhive-workspace-"
+const RUN_PREFIX : String = "moonproof-workspace-"
 
 ///|
 /// 在系统临时目录下创建一个新的工作区根。
@@ -274,7 +274,7 @@ fn contains_str(arr : Array[String], s : String) -> Bool {
 fn test_base(tag : String) -> String {
   let b = @proc.join_path(
     @proc.temp_dir(),
-    "moonhive-ws-test-" + tag + "-" + @env.now().to_string(),
+    "moonproof-ws-test-" + tag + "-" + @env.now().to_string(),
   )
   ignore(@fs.rm_rf(b))
   b

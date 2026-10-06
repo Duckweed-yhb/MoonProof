@@ -200,7 +200,7 @@ pub fn remove_file(path : String) -> Bool {
 fn test_dir(tag : String) -> String {
   let base = @proc.temp_dir()
   let stamp = @env.now()
-  @proc.join_path(base, "moonhive-fs-test-" + tag + "-" + stamp.to_string())
+  @proc.join_path(base, "moonproof-fs-test-" + tag + "-" + stamp.to_string())
 }
 
 ///|

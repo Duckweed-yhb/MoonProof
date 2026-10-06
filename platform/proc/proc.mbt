@@ -166,7 +166,7 @@ fn path_separator() -> String {
 /// 非零退出码**不算错误**——编译器报错就是非零退出码，是正常结果。
 pub fn run(cmd : String, workdir : String, timeout_ms : Int) -> Result[Output, ProcError] {
   let stamp = @env.now()
-  let prefix = "moonhive-" + stamp.to_string()
+  let prefix = "moonproof-" + stamp.to_string()
   let tmp = temp_dir()
   let out_file = join_path(tmp, prefix + "-out.txt")
   let err_file = join_path(tmp, prefix + "-err.txt")
