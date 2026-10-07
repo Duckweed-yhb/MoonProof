@@ -1,5 +1,9 @@
 # MoonProof
 
+[![CI](https://img.shields.io/github/actions/workflow/status/Duckweed-yhb/MoonProof/ci.yml?branch=main&label=CI&logo=github)](https://github.com/Duckweed-yhb/MoonProof/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![MoonBit](https://img.shields.io/badge/MoonBit-生态库-8A2BE2)](https://mooncakes.io/docs/Duckweed/moon-proof)
+
 > **MoonBit 文档与教程示例的持续验证框架**
 >
 > 把文档、教程、源文件注释里的 MoonBit 代码块抽出来，在隔离环境中真实编译与运行，回答一个问题：
@@ -70,6 +74,29 @@ moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录>
 | ` ```moonbit run ` | 编译 + 运行验证（`pkgtype executable`，真正执行 main） |
 | ` ```moonbit no-check ` | 跳过，不参与验证 |
 | ` ```moonbit should-fail ` | **期望编译失败**（用于演示报错） |
+
+### 导出 JSON 报告
+
+加 `--out <json 路径>` 时，文档验证结果以 JSON 数组写出，供 CI 或后续处理消费。每个元素对应一份文档：
+
+```json
+[
+  {
+    "path": "./README.md",
+    "total": 1, "passed": 1, "failed": 0, "skipped": 0,
+    "blocks": [
+      {
+        "path": "./README.md", "start_line": 42, "kind": "compile",
+        "status": "pass", "verdict": "", "detail": "", "suggestion": ""
+      }
+    ]
+  }
+]
+```
+
+- `blocks[].kind`：`compile` / `run` / `no-check` / `should-fail`（与标注对应）
+- `blocks[].status`：`pass` / `fail` / `skip`
+- `blocks[].verdict`：失败时的归因类别（`compile-error` / `api-changed` / `missing-dependency` / `toolchain-mismatch` / `missing-main`）；`detail` 为诊断摘要，`suggestion` 为修复建议
 
 ---
 
@@ -157,6 +184,7 @@ MoonProof/
 ├── examples/sample.md   端到端样例文档
 ├── docs/                真实验证报告（error-codes-report / tutorial-audit-report / eval-audit-report）
 ├── .github/workflows/    CI
+├── CHANGELOG.md          版本变更记录
 ├── moon.mod
 └── README.md
 ```
