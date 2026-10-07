@@ -37,6 +37,8 @@ moon run --target native cmd/moonproof -- . --target wasm        # 指定验证�
 moon run --target native cmd/moonproof -- ./some-lib --dep moonbitlang/async  # 注入第三方依赖，供示例 import
 ```
 
+> **第三方库文档审计**：`--dep <pkg>` 会把依赖注入隔离工作区（等价 `moon add`），并**自动把代码块顶部的 `import { ... }` 迁移到 `moon.pkg`**——新版 MoonBit 要求 import 声明放在 `moon.pkg`。因此含 import 的第三方库文档示例也能被真实编译验证，而不误报 `compile-error`。示例：验证 `moonbitlang/x` 的 uuid 文档，`moon run --target native cmd/moonproof -- <dir> --dep moonbitlang/x`。
+
 > 注意：`cmd/moonproof` 是 native-only 的 CLI。**`moon run` 必须带 `--target native`**，否则 moon 默认选 wasm 后端会报 "does not support target backend 'wasm'"。
 
 上面的命令会扫描当前目录下的 `.md` 文档，把每个 ```moonbit 代码块抽出来、在隔离工作区里真实编译（`run` 标注则真正运行），并输出每块的结果与失败归因。加 `--verbose`（或 `-v`）时，每个失败块会缩进输出诊断详情。
@@ -145,8 +147,8 @@ platform/                  平台层（仅 native，含 C FFI）
 
 ## 测试与自举
 
-- 单元测试：`moon test --target native`（87 用例）
-- 纯计算层可移植：`moon test --target wasm`（46 用例，同样覆盖 wasm-gc / js）
+- 单元测试：`moon test --target native`（91 用例）
+- 纯计算层可移植：`moon test --target wasm`（50 用例，同样覆盖 wasm-gc / js）
 - 端到端样例：`examples/sample.md` 覆盖 compile / run / no-check / should-fail 四种标注
 - **自举（dogfooding）**：CI 里用 MoonProof 自己验证本仓库 README 与示例文档，任一示例腐坏 → CI 红灯
 

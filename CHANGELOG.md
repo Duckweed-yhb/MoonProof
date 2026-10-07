@@ -5,6 +5,17 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Added
+- 代码块顶部连续 `import { ... }` 自动迁移到 `moon.pkg`：新版 MoonBit 要求 import 声明放在 `moon.pkg`，迁移后含 import 的第三方库文档示例（配合 `--dep`）可被真实编译验证，不再误报 `compile-error`。
+- Cram CLI 冒烟覆盖扩展：`--target wasm` / `--out <json>` / `--dep <pkg>` 用例。
+- 单元测试：native 87 → 91，wasm 46 → 50（含 import 迁移 4 例）。
+
+### Changed
+- README 补充"第三方库文档审计（`--dep` + import 自动迁移）"用法与测试数同步（91 / 50）。
+- 端到端实证：`--dep moonbitlang/x` 下 uuid 文档示例（含 import + `fn main raise`）编译通过。
+
 ## [0.1.3] - 2026-10-07
 
 ### Changed

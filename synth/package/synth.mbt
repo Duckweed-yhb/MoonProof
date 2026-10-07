@@ -42,26 +42,67 @@ pub fn synth_block(block : @markdown.CodeBlock, index : Int, doc_path : String) 
   // 否则会导致对本身正确的代码块误报 compile-error。
   // 用行首匹配而非子串 contains，避免代码里字符串/注释含 "fn main" 造成误判。
   let has_main = has_top_level_main(block.code)
+  // 提取代码块顶部的 import 声明，迁移到 moon.pkg：新版 MoonBit 要求 import 声明放在
+  // moon.pkg，代码文件内写 `import { "pkg" }` 会报 "Invalid import declaration"。
+  // 不迁移时，审计含 import 的第三方库文档示例必然误报 compile-error。
+  let (imports, body) = split_top_imports(block.code)
   let moon_mod = "name = \"Duckweed/\{name}\"\nversion = \"0.1.0\"\ndescription = \"MoonProof synthesized block\"\n"
   // 可运行块或含 fn main 的块用 pkgtype(kind:"executable") 标记 main 入口（本工具链版本不用 is_main）。
-  let moon_pkg = if is_run || has_main {
-    "pkgtype(kind: \"executable\")\n"
-  } else {
-    ""
+  let pkg_builder = StringBuilder()
+  if is_run || has_main {
+    pkg_builder.write_string("pkgtype(kind: \"executable\")\n")
   }
-  let main_mbt = block.code
+  for imp in imports {
+    pkg_builder.write_string(imp)
+    pkg_builder.write_string("\n")
+  }
+  let moon_pkg = pkg_builder.to_string()
+  let main_mbt = body
   let files = [
     { path: "moon.mod", content: moon_mod },
     { path: "main/moon.pkg", content: moon_pkg },
     { path: "main/main.mbt", content: main_mbt },
   ]
-  // 行号映射：code 第 (i+1) 行 ↔ 文档 (start_line + i + 1) 行
-  let code_lines = block.code.split("\n").to_array()
+  // 行号映射：body 第 (k+1) 行 ↔ 文档 (start_line + import_count + k + 1) 行。
+  // 顶部 import 行已从 body 移出到 moon.pkg，原行号需加 import_count 偏移。
+  let code_lines = body.split("\n").to_array()
   let line_map : Array[Int] = []
-  for i in 0..<code_lines.length() {
-    line_map.push(block.start_line + i + 1)
+  let import_count = imports.length()
+  for k in 0..<code_lines.length() {
+    line_map.push(block.start_line + import_count + k + 1)
   }
   { name, is_run, files, line_map, doc_path }
+}
+
+///|
+/// 提取代码块顶部连续的 import 声明行，返回 (import 行数组, 剩余代码)。
+/// 只处理单行 import（`import "pkg"` 或 `import { "pkg" }`）；跨行 import 不迁移，留原位。
+fn split_top_imports(code : String) -> (Array[String], String) {
+  // split 返回 Array[StringView]，转成 owned String 供后续 String API 使用
+  let lines = code.split("\n").map(fn(v) { v.to_owned() }).to_array()
+  let imports : Array[String] = []
+  let mut i = 0
+  while i < lines.length() && is_import_line(lines[i]) {
+    imports.push(lines[i].trim().to_owned())
+    i = i + 1
+  }
+  let b = StringBuilder()
+  let mut j = i
+  while j < lines.length() {
+    if j > i {
+      b.write_string("\n")
+    }
+    b.write_string(lines[j])
+    j = j + 1
+  }
+  (imports, b.to_string())
+}
+
+///|
+/// 是否单行 import 声明（行首 `import ` 或恰好 `import`）。
+fn is_import_line(line : String) -> Bool {
+  let t = line.trim().to_owned()
+  t == "import" || t.has_prefix("import ")
 }
 
 ///|
@@ -154,4 +195,37 @@ test "带缩进的 fn main 也被识别" {
   let b = @markdown.make_block(1, 2, "  fn main() { }", @markdown.compile_kind())
   let r = synth_block(b, 0, "x.md")
   assert_eq(r.files[1].content, "pkgtype(kind: \"executable\")\n")
+}
+
+test "顶部单行 import 迁移到 moon.pkg" {
+  let b = @markdown.make_block(1, 3, "import { \"moonbitlang/x/uuid\" }\nfn main raise { }", @markdown.compile_kind())
+  let r = synth_block(b, 0, "a.md")
+  // import 行进入 moon.pkg，main.mbt 只保留 body
+  assert_eq(r.files[1].content, "pkgtype(kind: \"executable\")\nimport { \"moonbitlang/x/uuid\" }\n")
+  assert_eq(r.files[2].content, "fn main raise { }")
+}
+
+test "多行 import 全部迁移且行号按偏移重算" {
+  let b = @markdown.make_block(5, 10, "import { \"a\" }\nimport { \"b\" }\nlet x = 1", @markdown.compile_kind())
+  let r = synth_block(b, 0, "a.md")
+  assert_eq(r.files[1].content, "import { \"a\" }\nimport { \"b\" }\n")
+  assert_eq(r.files[2].content, "let x = 1")
+  // import_count=2，body 首行(原第3行) ↔ 文档行 5+2+0+1 = 8
+  assert_eq(r.line_map[0], 8)
+}
+
+test "import 后跟非 import 行则后续不迁移" {
+  let b = @markdown.make_block(1, 4, "import { \"a\" }\nlet y = 2\nimport { \"b\" }", @markdown.compile_kind())
+  let r = synth_block(b, 0, "a.md")
+  // 仅顶部连续 import 迁移；第 3 行的 import 因被非 import 行隔断，留在 body
+  assert_eq(r.files[1].content, "import { \"a\" }\n")
+  assert_eq(r.files[2].content, "let y = 2\nimport { \"b\" }")
+}
+
+test "无 import 时 moon.pkg 与 main.mbt 保持原样" {
+  let b = @markdown.make_block(1, 2, "let x = 1", @markdown.compile_kind())
+  let r = synth_block(b, 0, "x.md")
+  assert_eq(r.files[1].content, "")
+  assert_eq(r.files[2].content, "let x = 1")
+  assert_eq(r.line_map[0], 2)
 }
