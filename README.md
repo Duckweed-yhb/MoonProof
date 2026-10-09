@@ -35,6 +35,8 @@ moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录> -
 moon run --target native cmd/moonproof -- . --out report.json   # 文档验证结果导出 JSON
 moon run --target native cmd/moonproof -- . --target wasm        # 指定验证后端（wasm/js/native）
 moon run --target native cmd/moonproof -- ./some-lib --dep moonbitlang/async  # 注入第三方依赖，供示例 import
+moon run --target native cmd/moonproof -- . --snapshot baseline.txt          # 写本次块指纹快照
+moon run --target native cmd/moonproof -- . --compare baseline.txt           # 与旧快照差分（新增失效/已修复）
 ```
 
 > **第三方库文档审计**：`--dep <pkg>` 会把依赖注入隔离工作区（等价 `moon add`），并**自动把代码块顶部的 `import { ... }` 迁移到 `moon.pkg`**——新版 MoonBit 要求 import 声明放在 `moon.pkg`。因此含 import 的第三方库文档示例也能被真实编译验证，而不误报 `compile-error`。示例：验证 `moonbitlang/x` 的 uuid 文档，`moon run --target native cmd/moonproof -- <dir> --dep moonbitlang/x`。
@@ -100,6 +102,32 @@ moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录>
 - `blocks[].status`：`pass` / `fail` / `skip`
 - `blocks[].verdict`：失败时的归因类别（`compile-error` / `api-changed` / `missing-dependency` / `toolchain-mismatch` / `missing-main`）；`detail` 为诊断摘要，`suggestion` 为修复建议
 
+### 快照差分（审计可追踪）
+
+让文档验证结果**随时间可追踪**：`--snapshot` 把本次各代码块的成败指纹写入快照，之后用 `--compare` 与旧快照差分，输出「新增失效 / 已修复 / 保持失效 / 新增通过」。
+
+```bash
+# 第一次：生成基线快照
+moon run --target native cmd/moonproof -- . --snapshot baseline.txt
+
+# 若干天后：对比当前状态与基线
+moon run --target native cmd/moonproof -- . --compare baseline.txt
+```
+
+输出示例：
+
+```
+== 差分（本次 vs 快照） ==
+  新增失效: 1 | 已修复: 2 | 保持失效: 0 | 新增通过: 0
+  [新失效] ./docs/tutorial.md:120 (compile) api-changed
+  [已修复] ./docs/tutorial.md:42
+  [已修复] ./docs/guide.md:17
+```
+
+- 按 `path + start_line` 匹配同一代码块（在**同一仓库目录**上反复验证时稳定；目录移动会让路径变化，属预期边界）
+- `新失效` = 旧 pass/skip → 今 fail；`已修复` = 旧 fail → 今 pass；`保持失效` = 两次皆 fail
+- 快照为纯文本（`path\tstart_line\tkind\tstatus` 每行一块），可提交进仓库作为回归基线，也可纳入 CI 判断"本次是否新增了失效"
+
 ---
 
 ## 架构
@@ -147,8 +175,8 @@ platform/                  平台层（仅 native，含 C FFI）
 
 ## 测试与自举
 
-- 单元测试：`moon test --target native`（91 用例）
-- 纯计算层可移植：`moon test --target wasm`（50 用例，同样覆盖 wasm-gc / js）
+- 单元测试：`moon test --target native`（102 用例）
+- 纯计算层可移植：`moon test --target wasm`（58 用例，同样覆盖 wasm-gc / js）
 - 端到端样例：`examples/sample.md` 覆盖 compile / run / no-check / should-fail 四种标注
 - **自举（dogfooding）**：CI 里用 MoonProof 自己验证本仓库 README 与示例文档，任一示例腐坏 → CI 红灯
 

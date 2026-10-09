@@ -11,6 +11,9 @@
 - 代码块顶部连续 `import { ... }` 自动迁移到 `moon.pkg`：新版 MoonBit 要求 import 声明放在 `moon.pkg`，迁移后含 import 的第三方库文档示例（配合 `--dep`）可被真实编译验证，不再误报 `compile-error`。
 - Cram CLI 冒烟覆盖扩展：`--target wasm` / `--out <json>` / `--dep <pkg>` 用例。
 - 单元测试：native 87 → 91，wasm 46 → 50（含 import 迁移 4 例）。
+- 差分对比能力：新增纯计算包 `features/diff`，支持 `--snapshot <path>` 把本次块指纹写入快照，`--compare <path>` 读旧快照与本次结果差分，输出「新增失效 / 已修复 / 保持失效 / 新增通过」，让审计结果可随时间追踪。
+- 单元测试：native 91 → 102（diff 8 例 + `--snapshot` / `--compare` 参数解析 4 例）。
+
 
 ### Changed
 - README 补充"第三方库文档审计（`--dep` + import 自动迁移）"用法与测试数同步（91 / 50）。

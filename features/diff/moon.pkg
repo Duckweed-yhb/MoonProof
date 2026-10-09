@@ -1,0 +1,7 @@
+///|
+/// features/diff — 差分对比（纯计算）
+supported_targets = "all"
+
+import {
+  "Duckweed/moon-proof/features/report" @report,
+}

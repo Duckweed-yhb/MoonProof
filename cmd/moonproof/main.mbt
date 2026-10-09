@@ -22,6 +22,10 @@ pub struct ParsedArgs {
   target : String
   /// --dep 注入的第三方依赖（可重复，形如 "owner/name"）
   deps : Array[String]
+  /// --snapshot 的快照输出路径（非空即把本次块指纹写入，供下次 --compare）
+  snapshot_path : String
+  /// --compare 的旧快照路径（非空即与本次结果差分，输出新增失效/已修复）
+  compare_path : String
   /// 解析结果动作：docs / errorcodes / help / error
   action : String
   /// action == "error" 时的提示
@@ -39,6 +43,8 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
   let mut out_path = ""
   let mut target = ""
   let deps : Array[String] = []
+  let mut snapshot_path = ""
+  let mut compare_path = ""
   let mut i = 1
   while i < argv.length() {
     let a = argv[i]
@@ -60,6 +66,12 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
     } else if a == "--dep" && i + 1 < argv.length() {
       deps.push(argv[i + 1])
       i = i + 2
+    } else if a == "--snapshot" && i + 1 < argv.length() {
+      snapshot_path = argv[i + 1]
+      i = i + 2
+    } else if a == "--compare" && i + 1 < argv.length() {
+      compare_path = argv[i + 1]
+      i = i + 2
     } else if a == "--help" || a == "-h" {
       return {
         root,
@@ -69,6 +81,8 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
         out_path,
         target,
         deps,
+        snapshot_path,
+        compare_path,
         action: "help",
         error: "",
       }
@@ -81,6 +95,8 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
         out_path,
         target,
         deps,
+        snapshot_path,
+        compare_path,
         action: "error",
         error: "unknown option: " + a,
       }
@@ -90,9 +106,9 @@ fn parse_args(argv : Array[String]) -> ParsedArgs {
     }
   }
   if err_dir.length() > 0 {
-    { root, timeout_ms, verbose, err_dir, out_path, target, deps, action: "errorcodes", error: "" }
+    { root, timeout_ms, verbose, err_dir, out_path, target, deps, snapshot_path, compare_path, action: "errorcodes", error: "" }
   } else {
-    { root, timeout_ms, verbose, err_dir, out_path, target, deps, action: "docs", error: "" }
+    { root, timeout_ms, verbose, err_dir, out_path, target, deps, snapshot_path, compare_path, action: "docs", error: "" }
   }
 }
 
@@ -115,6 +131,8 @@ fn main {
       args.out_path,
       args.target,
       args.deps,
+      args.snapshot_path,
+      args.compare_path,
     )
   }
 }
@@ -124,13 +142,17 @@ fn main {
 /// out_path 非空时，把全部文档报告导出为 JSON 数组。
 /// target 非空时用 `--target <t>` 指定验证后端。
 /// deps 非空时对每个依赖执行 `moon add` 注入，供示例 import。
+/// snapshot_path 非空时把本次块指纹写入快照（供下次 --compare）。
+/// compare_path 非空时读旧快照与本次结果差分，输出新增失效/已修复/保持失效。
 fn run_docs(
   root : String,
   timeout_ms : Int,
   verbose : Bool,
   out_path : String,
   target : String,
-  deps : Array[String]
+  deps : Array[String],
+  snapshot_path : String,
+  compare_path : String
 ) -> Unit {
   let opts = @run.make_options_with_deps(timeout_ms, target, deps)
   match @run.run_docs(root, opts) {
@@ -151,6 +173,21 @@ fn run_docs(
           println("json written to " + out_path)
         } else {
           println("warning: failed to write " + out_path)
+        }
+      }
+      if compare_path.length() > 0 {
+        if @fs.exists(compare_path) {
+          let old = @diff.parse_snapshot(@fs.read_text(compare_path))
+          println(@diff.render_diff(@diff.diff(old, reports)))
+        } else {
+          println("warning: snapshot not found " + compare_path)
+        }
+      }
+      if snapshot_path.length() > 0 {
+        if @fs.write_text(snapshot_path, @diff.snapshot_lines(reports)) {
+          println("snapshot written to " + snapshot_path)
+        } else {
+          println("warning: failed to write " + snapshot_path)
         }
       }
       if any_fail {
@@ -219,6 +256,8 @@ fn print_usage() -> Unit {
   println("  --target    指定验证后端（wasm/js/native）")
   println("  --dep       注入第三方依赖（可重复，形如 owner/name，编译前 moon add）")
   println("  --out       导出 JSON 报告")
+  println("  --snapshot  把本次块指纹写入快照文件（供下次 --compare 对比）")
+  println("  --compare   读旧快照与本次结果差分，输出新增失效/已修复/保持失效")
   println("错误码一致性验证: moon run --target native cmd/moonproof -- --errorcodes <error_codes 根目录> [--timeout <毫秒>] [--out <json 路径>]")
 }
 
@@ -320,6 +359,24 @@ test "--dep 与目录混用" {
   let a = parse_args(["moonproof", "./docs", "--dep", "owner/lib"])
   assert_eq(a.root, "./docs")
   assert_eq(a.deps[0], "owner/lib")
+}
+
+test "--snapshot 设置快照输出路径" {
+  let a = parse_args(["moonproof", "./docs", "--snapshot", "snap.txt"])
+  assert_eq(a.action, "docs")
+  assert_eq(a.snapshot_path, "snap.txt")
+}
+
+test "--compare 设置旧快照路径" {
+  let a = parse_args(["moonproof", "./docs", "--compare", "old.txt"])
+  assert_eq(a.action, "docs")
+  assert_eq(a.compare_path, "old.txt")
+}
+
+test "--snapshot 与 --compare 可同用" {
+  let a = parse_args(["moonproof", "--snapshot", "s.txt", "--compare", "c.txt"])
+  assert_eq(a.snapshot_path, "s.txt")
+  assert_eq(a.compare_path, "c.txt")
 }
 
 test "parse_int 解析与非法回退" {
