@@ -90,14 +90,14 @@ static const char *temp_name(const char *suffix, char *buf, int32_t cap) {
   if (base == NULL) {
     base = ".";
   }
-  snprintf(buf, (size_t)cap, "%s\\moonhive_%lu_%s", base,
+  snprintf(buf, (size_t)cap, "%s\\moonproof_%lu_%s", base,
            (unsigned long)GetCurrentProcessId(), suffix);
 #else
   const char *base = getenv("TMPDIR");
   if (base == NULL) {
     base = "/tmp";
   }
-  snprintf(buf, (size_t)cap, "%s/moonhive_%d_%s", base, (int)getpid(), suffix);
+  snprintf(buf, (size_t)cap, "%s/moonproof_%d_%s", base, (int)getpid(), suffix);
 #endif
   return buf;
 }
